@@ -45,7 +45,7 @@ actions:
       sequence:
         # Pomiń pokój, jeśli adaptive lighting wyłączony
         - condition: template
-          value_template: "{{ is_state(repeat.item.switch, 'off') }}"
+          value_template: "{{ is_state(repeat.item.switch, 'on') }}"
 
         # Delay tylko przy ręcznym włączeniu światła (Tradfri fix)
         - if:
