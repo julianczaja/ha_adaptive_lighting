@@ -16,11 +16,18 @@ description: >-
 triggers:
   - trigger: time_pattern
     minutes: /1
+  # Włączenie światła – natychmiastowa reakcja
   - trigger: state
     entity_id:
       - light.sypialnia
       - light.salon_sufit
       - light.salon_lampa
+    to: "on"
+  # Włączenie przełącznika adaptive lighting – natychmiastowa aktualizacja pokoju
+  - trigger: state
+    entity_id:
+      - input_boolean.adaptive_lighting_sypialnia
+      - input_boolean.adaptive_lighting_salon
     to: "on"
 
 actions:
@@ -47,10 +54,14 @@ actions:
         - condition: template
           value_template: "{{ is_state(repeat.item.switch, 'on') }}"
 
-        # Delay tylko przy ręcznym włączeniu światła (Tradfri fix)
+        # Delay tylko gdy użytkownik ręcznie włączył ŻARÓWKĘ (Tradfri fix).
+        # Przy włączeniu switcha adaptacyjnego delay jest zbędny – światło już świeci.
         - if:
             - condition: template
-              value_template: "{{ trigger.trigger == 'state' and repeat.item.delay_on }}"
+              value_template: >-
+                {{ trigger.trigger == 'state'
+                   and trigger.entity_id in repeat.item.lights
+                   and repeat.item.delay_on }}
           then:
             - delay: "00:00:01.500"
 
