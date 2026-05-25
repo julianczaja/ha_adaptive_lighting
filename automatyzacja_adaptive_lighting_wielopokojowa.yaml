@@ -1,0 +1,87 @@
+# ═══════════════════════════════════════════════════════════════
+# Adaptive Lighting – automatyzacja wielopokojowa
+# ═══════════════════════════════════════════════════════════════
+#
+# Jak dodać nowy pokój:
+#   1. Stwórz input_boolean.adaptive_lighting_NAZWA w HA
+#   2. Dopisz go do listy "rooms" poniżej – podaj switch i listę żarówek
+#   3. Przełącznik w UI HA włącza/wyłącza adaptive lighting dla pokoju
+#
+# ═══════════════════════════════════════════════════════════════
+
+alias: "Oświetlenie: Adaptive Lighting (wielopokojowe)"
+description: >-
+  Jedna automatyzacja dla wielu pomieszczeń. Każdy pokój ma własny
+  input_boolean do sterowania. Sensory jasności/temperatury są globalne.
+triggers:
+  - trigger: time_pattern
+    minutes: /1
+  - trigger: state
+    entity_id:
+      - light.sypialnia
+      - light.salon_sufit
+      - light.salon_lampa
+    to: "on"
+
+actions:
+  # ── Mapa pokoi ──────────────────────────────────────────
+  # Dopisz swój pokój tutaj:
+  - variables:
+      rooms:
+        - switch: input_boolean.adaptive_lighting_sypialnia
+          lights:
+            - light.sypialnia
+          delay_on: true   # 1.5s delay dla IKEA Tradfri
+
+        - switch: input_boolean.adaptive_lighting_salon
+          lights:
+            - light.salon_sufit
+            - light.salon_lampa
+          delay_on: true
+
+  # ── Iteracja po pokojach ───────────────────────────────
+  - repeat:
+      for_each: "{{ rooms }}"
+      sequence:
+        # Pomiń pokój, jeśli adaptive lighting wyłączony
+        - condition: state
+          entity_id: "{{ repeat.item.switch }}"
+          state: "off"
+
+        # Delay tylko przy ręcznym włączeniu światła (Tradfri fix)
+        - if:
+            - condition: template
+              value_template: "{{ trigger.trigger == 'state' and repeat.item.delay_on }}"
+          then:
+            - delay: "00:00:01.500"
+
+        # Iteracja po żarówkach w pokoju
+        - repeat:
+            for_each: "{{ repeat.item.lights }}"
+            sequence:
+              - condition: template
+                value_template: "{{ is_state(repeat.item, 'on') }}"
+
+              - variables:
+                  target_temp: "{{ states('sensor.zadana_temperatura_swiatla') | int(3000) }}"
+                  target_brightness: "{{ states('sensor.zadana_jasnosc_swiatla') | int(50) }}"
+                  trans: "{{ 1 if trigger.trigger == 'time_pattern' else 0 }}"
+
+              - action: light.turn_on
+                target:
+                  entity_id: "{{ repeat.item }}"
+                data:
+                  color_temp_kelvin: "{{ target_temp }}"
+                  transition: "{{ trans }}"
+
+              - delay:
+                  milliseconds: 200
+
+              - action: light.turn_on
+                target:
+                  entity_id: "{{ repeat.item }}"
+                data:
+                  brightness_pct: "{{ target_brightness }}"
+                  transition: "{{ trans }}"
+
+mode: restart
