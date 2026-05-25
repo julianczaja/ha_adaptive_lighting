@@ -1,0 +1,310 @@
+/* ═══════════════════════════════════════════════════════════
+   Adaptive Lighting Konfigurator – Styles
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  --bg:        #f0f2f5;
+  --surface:   #ffffff;
+  --text:      #1e293b;
+  --text-dim:  #64748b;
+  --text-faint:#94a3b8;
+  --border:    #e2e8f0;
+  --border-light: #f1f5f9;
+
+  --amber:     #38bdf8;
+  --amber-h:   38;
+  --amber-s:   92%;
+  --amber-l:   50%;
+  --amber-50:  #f0f9ff;
+  --amber-100: #e0f2fe;
+  --amber-600: #0ea5e9;
+
+  --violet:    #f97316;
+  --violet-50: #fff7ed;
+  --violet-100:#ffedd5;
+  --violet-700:#c2410c;
+
+  --blue:      #3b82f6;
+  --blue-50:   #eff6ff;
+  --blue-700:  #1d4ed8;
+
+  --sunrise:   #f97316;
+  --sunset:    #ef4444;
+  --now:       #10b981;
+
+  --radius:    10px;
+  --shadow:    0 1px 2px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ──────────────────────────────────────────── */
+
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 10;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.topbar-inner {
+  max-width: 1300px; margin: 0 auto;
+  display: flex; align-items: center; gap: 20px;
+  padding: 10px 24px; flex-wrap: wrap;
+}
+
+.logo {
+  display: flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+}
+.logo-icon { font-size: 1.3rem; }
+.logo-text { font-weight: 700; font-size: 0.95rem; letter-spacing: -0.01em; white-space: nowrap; }
+.logo-badge {
+  font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--blue-50); color: var(--blue);
+  padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+}
+
+.sun-strip {
+  display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+}
+
+/* ── Sun bar (between topbar and main) ────────────────── */
+.sun-bar {
+  max-width: 1300px; margin: 0 auto;
+  padding: 10px 24px;
+}
+.sun-bar-inner {
+  display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+  background: var(--surface); border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 10px 20px;
+}
+.sun-pair {
+  display: flex; align-items: center; gap: 6px;
+}
+.sun-emoji { font-size: 1.1rem; line-height: 1; }
+.sun-pair input[type="time"] {
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 8px; font-size: 0.82rem; font-family: inherit;
+  color: var(--text); width: 78px; background: var(--surface);
+}
+.sun-pair input[type="time"]:focus {
+  border-color: var(--blue); outline: none;
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.12);
+}
+.sun-label {
+  font-size: 0.68rem; font-weight: 600; color: var(--text-faint);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.sun-pair input[type="range"] {
+  width: 80px; accent-color: var(--blue);
+}
+.sun-offset-val {
+  font-size: 0.75rem; font-weight: 600; min-width: 44px; text-align: right;
+}
+.sun-pair:first-child .sun-offset-val { color: var(--sunrise); }
+.sun-pair:last-child  .sun-offset-val { color: var(--sunset); }
+
+.geo-note {
+  font-size: 0.7rem; color: var(--text-dim);
+  white-space: nowrap; display: flex; align-items: center; gap: 4px;
+}
+.geo-note::before {
+  content: ''; display: inline-block; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--now);
+}
+
+.topbar-actions {
+  margin-left: auto; display: flex; align-items: center; gap: 10px;
+}
+
+/* ── Main layout ──────────────────────────────────────── */
+
+.main {
+  max-width: 1300px; margin: 0 auto;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+  padding: 20px 24px 12px;
+}
+@media (max-width: 860px) {
+  .main { grid-template-columns: 1fr; padding: 16px; }
+}
+
+/* ── Channel column ───────────────────────────────────── */
+
+.channel {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+
+.channel-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 20px 12px;
+}
+.channel-dot {
+  width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+}
+.brightness .channel-dot { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-100); }
+.temperature .channel-dot { background: var(--violet); box-shadow: 0 0 0 3px var(--violet-100); }
+
+.channel-header h2 {
+  font-size: 0.95rem; font-weight: 700; letter-spacing: -0.01em;
+}
+
+/* ── Parameters ───────────────────────────────────────── */
+
+.params {
+  padding: 0 20px 12px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+
+.param {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 6px 0;
+}
+.param-label {
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.param-label span:first-child {
+  font-size: 0.8rem; font-weight: 600; color: var(--text);
+}
+.param-var {
+  font-size: 0.62rem; font-weight: 400; color: var(--text-faint);
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  background: var(--border-light); padding: 1px 5px; border-radius: 3px;
+}
+.param-ctrl {
+  display: flex; align-items: center; gap: 8px;
+}
+.param-ctrl input[type="range"] {
+  flex: 1; accent-color: var(--blue);
+}
+.param-ctrl input[type="number"] {
+  width: 58px; border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px; font-size: 0.76rem; text-align: center;
+  font-family: inherit; font-weight: 500; color: var(--text);
+  background: var(--surface);
+}
+.param-ctrl input[type="number"]:focus {
+  border-color: var(--blue); outline: none;
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
+}
+.param-suffix {
+  font-size: 0.72rem; color: var(--text-faint); width: 22px; text-align: left;
+}
+
+/* ── Chart (combined, full-width) ────────────────────── */
+
+.chart-full-wrap {
+  max-width: 1300px; margin: 0 auto; padding: 0 24px 20px;
+}
+.chart-full-wrap .chart-inner {
+  height: 360px; position: relative;
+  background: var(--surface); border-radius: var(--radius);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+  padding: 8px;
+}
+
+/* ── Now card ─────────────────────────────────────────── */
+
+.now-card {
+  margin: 14px 20px 18px;
+  background: var(--border-light);
+  border-radius: 8px;
+  padding: 14px 16px;
+  text-align: center;
+}
+.now-label {
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--text-faint); margin-bottom: 2px;
+}
+.now-value {
+  font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1;
+}
+.brightness .now-value { color: var(--amber-600); }
+.temperature .now-value { color: var(--violet-700); }
+.now-phase {
+  font-size: 0.7rem; color: var(--text-dim); margin-top: 2px;
+}
+
+/* ── Buttons ──────────────────────────────────────────── */
+
+.btn {
+  padding: 7px 16px; border: none; border-radius: 6px;
+  font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  font-family: inherit; transition: background 0.15s, box-shadow 0.15s;
+}
+.btn-primary {
+  background: var(--blue); color: #fff;
+}
+.btn-primary:hover { background: var(--blue-700); }
+.btn-ghost {
+  background: transparent; color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover { background: var(--border-light); color: var(--text); }
+
+/* ── Bottom bar ───────────────────────────────────────── */
+
+.bottom-bar {
+  max-width: 1300px; margin: 0 auto; padding: 0 24px 24px;
+}
+.code-output {
+  width: 100%; height: 340px; margin-top: 10px;
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.7rem; padding: 14px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: #fafbfc;
+  resize: vertical; white-space: pre; tab-size: 2; color: #334155;
+  line-height: 1.6;
+}
+.hidden { display: none; }
+
+/* ── Custom range inputs ──────────────────────────────── */
+
+input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  height: 5px; background: #e2e8f0; border-radius: 3px; outline: none;
+}
+/* Default (top bar offsets) */
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--blue); border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2); cursor: pointer;
+  transition: transform 0.1s;
+}
+input[type="range"]::-webkit-slider-thumb:active { transform: scale(1.15); }
+input[type="range"]::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--blue); border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2); cursor: pointer;
+}
+
+/* Brightness channel – blue thumbs */
+.brightness input[type="range"] { accent-color: #0ea5e9; }
+.brightness input[type="range"]::-webkit-slider-thumb { background: #0ea5e9; border-color: #fff; }
+.brightness input[type="range"]::-moz-range-thumb { background: #0ea5e9; border-color: #fff; }
+
+/* Temperature channel – orange thumbs */
+.temperature input[type="range"] { accent-color: #f97316; }
+.temperature input[type="range"]::-webkit-slider-thumb { background: #f97316; border-color: #fff; }
+.temperature input[type="range"]::-moz-range-thumb { background: #f97316; border-color: #fff; }
+
+/* ── Scrollbar ────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }

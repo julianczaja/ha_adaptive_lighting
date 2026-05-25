@@ -1,0 +1,56 @@
+{# --- KONFIGURACJA TEMPERATURY BARWOWEJ --- #}
+{% set min_t = 2200 %}          {# Barwa nocna – bardzo ciepła (K) #}
+{% set max_t = 4000 %}          {# Barwa dzienna – chłodna (K) #}
+{% set dawn_min = 30 %}         {# Minut po wschodzie → pełna chłodna barwa #}
+{% set dusk_offset_min = 45 %}  {# Minut PRZED zachodem, gdy ocieplanie ZACZYNA się #}
+{% set dusk_min = 0 %}          {# Minut po zachodzie – opcjonalne wydłużenie ocieplania #}
+{% set sr_offset_min = 0 %}     {# Ręczny offset wschodu słońca (minuty, może być ujemny) #}
+{% set ss_offset_min = 0 %}     {# Ręczny offset zachodu słońca (minuty, może być ujemny) #}
+
+{# --- LOGIKA --- #}
+{% set next_sr = state_attr('sun.sun', 'next_rising') %}
+{% set next_ss = state_attr('sun.sun', 'next_setting') %}
+
+{% if next_sr and next_ss %}
+  {% set now_ts = as_timestamp(now()) %}
+  {% set sr_ts = as_timestamp(next_sr, now_ts) %}
+  {% set ss_ts = as_timestamp(next_ss, now_ts) %}
+
+  {% set sr = sr_ts if (sr_ts - now_ts) < 43200 else sr_ts - 86400 %}
+  {% set ss = ss_ts if (ss_ts - now_ts) < 43200 else ss_ts - 86400 %}
+
+  {# Ręczny offset (np. +30 min = późniejszy świt, -30 min = wcześniejszy) #}
+  {% set sr = sr + (sr_offset_min * 60) %}
+  {% set ss = ss + (ss_offset_min * 60) %}
+
+  {% set dawn_dur = dawn_min * 60 %}
+  {% set dusk_offset = dusk_offset_min * 60 %}
+  {% set dusk_dur = dusk_min * 60 %}
+  {% set dusk_start = ss - dusk_offset %}
+  {% set dusk_end = ss + dusk_dur %}
+  {% set total_dusk = dusk_offset + dusk_dur %}
+
+  {% if now_ts < sr %}
+    {# Faza 0: Noc – najcieplejsza barwa #}
+    {{ min_t }}
+  {% elif now_ts <= (sr + dawn_dur) %}
+    {# Faza 1: Ochładzanie barwy z easingiem (smoothstep) #}
+    {% set progress = (now_ts - sr) / dawn_dur %}
+    {% set eased = (3 - 2 * progress) * progress * progress %}
+    {{ (min_t + (max_t - min_t) * eased) | int }}
+  {% elif now_ts < dusk_start %}
+    {# Faza 2: Pełny dzień – najchłodniejsza barwa #}
+    {{ max_t }}
+  {% elif now_ts <= dusk_end %}
+    {# Faza 3: Ocieplanie barwy z easingiem #}
+    {% set progress = (now_ts - dusk_start) / total_dusk %}
+    {% set eased = (3 - 2 * progress) * progress * progress %}
+    {{ (max_t - (max_t - min_t) * eased) | int }}
+  {% else %}
+    {# Faza 4: Noc – po zachodzie #}
+    {{ min_t }}
+  {% endif %}
+{% else %}
+  {# Fallback: dane sun.sun niedostępne – bezpieczna ciepła barwa #}
+  {{ min_t }}
+{% endif %}

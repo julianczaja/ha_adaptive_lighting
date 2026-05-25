@@ -1,0 +1,61 @@
+alias: "Oświetlenie: Inteligentna synchronizacja żarówek (IKEA Fix)"
+description: >-
+  Zintegrowana automatyzacja minutowa i startowa dostosowana do specyfiki IKEA
+  Tradfri. Minutowe odświeżanie + natychmiastowa reakcja na włączenie światła.
+triggers:
+  - trigger: time_pattern
+    minutes: /1
+  - trigger: state
+    entity_id:
+      - light.sypialnia
+    to: "on"
+
+conditions:
+  - condition: state
+    entity_id: switch.adaptive_lighting_sypialnia
+    state: "off"
+
+actions:
+  # Gdy użytkownik ręcznie włącza światło, IKEA Tradfri potrzebuje ~1.5s
+  # na ustabilizowanie się, zanim przyjmie nowe ustawienia.
+  - if:
+      - condition: template
+        value_template: "{{ trigger.trigger == 'state' }}"
+    then:
+      - delay: "00:00:01.500"
+
+  - repeat:
+      for_each:
+        - light.sypialnia
+      sequence:
+        # Pomiń, jeśli żarówka jest wyłączona
+        - condition: template
+          value_template: "{{ is_state(repeat.item, 'on') }}"
+
+        # Odczytaj wartości sensorów z fallbackiem –
+        # chroni przed unavailable/unknown przy restarcie HA
+        - variables:
+            target_temp: "{{ states('sensor.zadana_temperatura_swiatla') | int(3000) }}"
+            target_brightness: "{{ states('sensor.zadana_jasnosc_swiatla') | int(50) }}"
+            trans: "{{ 1 if trigger.trigger == 'time_pattern' else 0 }}"
+
+        # Kolejność ma znaczenie: najpierw temperatura barwowa, potem jasność.
+        # IKEA Tradfri potrzebuje odstępu między komendami Zigbee.
+        - action: light.turn_on
+          target:
+            entity_id: "{{ repeat.item }}"
+          data:
+            color_temp_kelvin: "{{ target_temp }}"
+            transition: "{{ trans }}"
+
+        - delay:
+            milliseconds: 200
+
+        - action: light.turn_on
+          target:
+            entity_id: "{{ repeat.item }}"
+          data:
+            brightness_pct: "{{ target_brightness }}"
+            transition: "{{ trans }}"
+
+mode: restart

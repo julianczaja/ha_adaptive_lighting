@@ -1,0 +1,58 @@
+{# --- KONFIGURACJA JASNOŚCI --- #}
+{% set min_b = 20 %}           {# Jasność nocna (%) #}
+{% set max_b = 100 %}          {# Jasność dzienna (%) #}
+{% set dawn_min = 60 %}        {# Minut po wschodzie → pełna jasność #}
+{% set dusk_min = 60 %}        {# Minut po zachodzie → minimalna jasność #}
+{% set dusk_offset_min = 30 %} {# Minut PRZED zachodem, gdy ściemnianie ZACZYNA się #}
+{% set sr_offset_min = 0 %}    {# Ręczny offset wschodu słońca (minuty, może być ujemny) #}
+{% set ss_offset_min = 0 %}    {# Ręczny offset zachodu słońca (minuty, może być ujemny) #}
+
+{# --- LOGIKA --- #}
+{% set next_sr = state_attr('sun.sun', 'next_rising') %}
+{% set next_ss = state_attr('sun.sun', 'next_setting') %}
+
+{% if next_sr and next_ss %}
+  {% set now_ts = as_timestamp(now()) %}
+  {% set sr_ts = as_timestamp(next_sr, now_ts) %}
+  {% set ss_ts = as_timestamp(next_ss, now_ts) %}
+
+  {# Poprawne przypisanie dzisiejszego wschodu/zachodu (omija bug z przeskakiwaniem daty po północy) #}
+  {% set sr = sr_ts if (sr_ts - now_ts) < 43200 else sr_ts - 86400 %}
+  {% set ss = ss_ts if (ss_ts - now_ts) < 43200 else ss_ts - 86400 %}
+
+  {# Ręczny offset (np. +30 min = późniejszy świt, -30 min = wcześniejszy) #}
+  {% set sr = sr + (sr_offset_min * 60) %}
+  {% set ss = ss + (ss_offset_min * 60) %}
+
+  {% set dawn_dur = dawn_min * 60 %}
+  {% set dusk_dur = dusk_min * 60 %}
+  {% set dusk_offset = dusk_offset_min * 60 %}
+  {% set dusk_start = ss - dusk_offset %}
+  {% set dusk_end = ss + dusk_dur %}
+  {# Całkowity czas ściemniania = faza przed zachodem + faza po zachodzie #}
+  {% set total_dusk = dusk_offset + dusk_dur %}
+
+  {% if now_ts < sr %}
+    {# Faza 0: Noc – przed wschodem #}
+    {{ min_b }}
+  {% elif now_ts <= (sr + dawn_dur) %}
+    {# Faza 1: Rozjaśnianie z easingiem (smoothstep: łagodny start i koniec) #}
+    {% set progress = (now_ts - sr) / dawn_dur %}
+    {% set eased = (3 - 2 * progress) * progress * progress %}
+    {{ (min_b + (max_b - min_b) * eased) | int }}
+  {% elif now_ts < dusk_start %}
+    {# Faza 2: Pełny dzień – maksymalna jasność #}
+    {{ max_b }}
+  {% elif now_ts <= dusk_end %}
+    {# Faza 3: Ściemnianie z easingiem #}
+    {% set progress = (now_ts - dusk_start) / total_dusk %}
+    {% set eased = (3 - 2 * progress) * progress * progress %}
+    {{ (max_b - (max_b - min_b) * eased) | int }}
+  {% else %}
+    {# Faza 4: Noc – po zakończeniu ściemniania #}
+    {{ min_b }}
+  {% endif %}
+{% else %}
+  {# Fallback: dane sun.sun niedostępne (np. restart HA) – bezpieczne minimum #}
+  {{ min_b }}
+{% endif %}

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adaptive Lighting – Konfigurator</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<link rel="stylesheet" href="konfigurator.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="logo">
+      <span class="logo-icon">💡</span>
+      <span class="logo-text">Adaptive Lighting</span>
+      <span class="logo-badge">konfigurator</span>
+    </div>
+    <div class="topbar-actions">
+      <span class="geo-note" title="Czasy słońca z algorytmu NOAA na podstawie geolokalizacji">📍 z geolokalizacji (NOAA)</span>
+      <button class="btn btn-ghost" id="btnReset">↺ reset</button>
+    </div>
+  </div>
+</div>
+
+<div class="sun-bar">
+  <div class="sun-bar-inner">
+    <div class="sun-pair">
+      <span class="sun-label">🌅 Wschód</span>
+      <input type="time" id="sunrise" value="06:00" step="60" title="Godzina wschodu słońca">
+      <span class="sun-label">offset</span>
+      <input type="range" id="sunrise_offset" value="0" min="-120" max="120" step="5" title="Przesunięcie wschodu ±2h">
+      <span class="sun-offset-val" id="sr_offset_label">0 min</span>
+    </div>
+    <div class="sun-pair">
+      <span class="sun-label">🌇 Zachód</span>
+      <input type="time" id="sunset" value="20:00" step="60" title="Godzina zachodu słońca">
+      <span class="sun-label">offset</span>
+      <input type="range" id="sunset_offset" value="0" min="-120" max="120" step="5" title="Przesunięcie zachodu ±2h">
+      <span class="sun-offset-val" id="ss_offset_label">0 min</span>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <!-- BRIGHTNESS COLUMN -->
+  <div class="channel brightness">
+    <div class="channel-header">
+      <span class="channel-dot"></span>
+      <h2>Jasność</h2>
+    </div>
+
+    <div class="params">
+      <div class="param">
+        <div class="param-label"><span>Jasność nocna</span><span class="param-var">min_b</span></div>
+        <div class="param-ctrl">
+          <input type="range" id="min_b" min="1" max="100" value="20" step="1">
+          <input type="number" id="min_b_val" min="1" max="100" value="20"><span class="param-suffix">%</span>
+        </div>
+      </div>
+      <div class="param">
+        <div class="param-label"><span>Jasność dzienna</span><span class="param-var">max_b</span></div>
+        <div class="param-ctrl">
+          <input type="range" id="max_b" min="1" max="100" value="100" step="1">
+          <input type="number" id="max_b_val" min="1" max="100" value="100"><span class="param-suffix">%</span>
+        </div>
+      </div>
+      <div class="param">
+        <div class="param-label"><span>Czas rozjaśniania</span><span class="param-var">dawn_min</span></div>
+        <div class="param-ctrl">
+          <input type="range" id="dawn_min_b" min="0" max="240" value="60" step="1">
+          <input type="number" id="dawn_min_b_val" min="0" max="240" value="60"><span class="param-suffix">min</span>
+        </div>
+      </div>
+      <div class="param">
+        <div class="param-label"><span>Czas ściemniania</span><span class="param-var">dusk_min</span></div>
+        <div class="param-ctrl">
+          <input type="range" id="dusk_min_b" min="0" max="240" value="60" step="1">
+          <input type="number" id="dusk_min_b_val" min="0" max="240" value="60"><span class="param-suffix">min</span>
+        </div>
+      </div>
+      <div class="param">
+        <div class="param-label"><span>Przedwczesne ściemnianie</span><span class="param-var">dusk_offset</span></div>
+        <div class="param-ctrl">
+          <input type="range" id="dusk_offset_b" min="0" max="240" value="30" step="1">
+          <input type="number" id="dusk_offset_b_val" min="0" max="240" value="30"><span class="param-suffix">min</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TEMPERATURE COLUMN -->
+  <div class="channel temperature">
+    <div class="channel-header">
+      <span class="channel-dot"></span>
+      <h2>Temperatura barwowa</h2>
+    </div>
+
+    <div class="params">
+      <div class="param">
+        <div class="param-label"><span>Barwa nocna</span><span class="param-var">min_t</span></div>
+        <div class="param-ctrl">
+          <input type="range" id="min_t" min="2200" max="4000" value="2200" step="50">
+          <input type="number" id="min_t_val" min="2200" max="4000" value="2200" step="50"><span class="param-suffix">K</span>
+        </div>
+      </div>
+      <div class="param">
+        <div class="param-label"><span>Barwa dzienna</span><span class="param-var">max_t</span></div>
+        <div class="param-ctrl">
+          <input type="range" id="max_t" min="2200" max="4000" value="4000" step="50">
+          <input type="number" id="max_t_val" min="2200" max="4000" value="4000" step="50"><span class="param-suffix">K</span>
+        </div>
+      </div>
+      <div class="param">
+        <div class="param-label"><span>Czas ochładzania barwy</span><span class="param-var">dawn_min</span></div>
+        <div class="param-ctrl">
+          <input type="range" id="dawn_min_t" min="0" max="240" value="30" step="1">
+          <input type="number" id="dawn_min_t_val" min="0" max="240" value="30"><span class="param-suffix">min</span>
+        </div>
+      </div>
+      <div class="param">
+        <div class="param-label"><span>Przedwczesne ocieplanie</span><span class="param-var">dusk_offset</span></div>
+        <div class="param-ctrl">
+          <input type="range" id="dusk_offset_t" min="0" max="240" value="45" step="1">
+          <input type="number" id="dusk_offset_t_val" min="0" max="240" value="45"><span class="param-suffix">min</span>
+        </div>
+      </div>
+      <div class="param">
+        <div class="param-label"><span>Czas ocieplania po zachodzie</span><span class="param-var">dusk_min</span></div>
+        <div class="param-ctrl">
+          <input type="range" id="dusk_min_t" min="0" max="240" value="0" step="1">
+          <input type="number" id="dusk_min_t_val" min="0" max="240" value="0"><span class="param-suffix">min</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="chart-full-wrap">
+  <div class="chart-inner" id="chartCombined"></div>
+</div>
+
+<div class="bottom-bar">
+  <button class="btn btn-primary" id="btnExport">Pokaż / ukryj kod Jinja</button>
+  <textarea class="code-output hidden" id="codeOutput" readonly spellcheck="false"></textarea>
+</div>
+
+<script src="konfigurator.js"></script>
+</body>
+</html>
