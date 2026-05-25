@@ -44,9 +44,8 @@ actions:
       for_each: "{{ rooms }}"
       sequence:
         # Pomiń pokój, jeśli adaptive lighting wyłączony
-        - condition: state
-          entity_id: "{{ repeat.item.switch }}"
-          state: "off"
+        - condition: template
+          value_template: "{{ is_state(repeat.item.switch, 'off') }}"
 
         # Delay tylko przy ręcznym włączeniu światła (Tradfri fix)
         - if:
