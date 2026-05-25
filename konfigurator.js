@@ -9,13 +9,13 @@ const paramDefs = [
   ['min_b', 'min_b_val', 'min_b', 20],
   ['max_b', 'max_b_val', 'max_b', 100],
   ['dawn_min_b', 'dawn_min_b_val', 'dawn_min_b', 60],
-  ['dusk_min_b', 'dusk_min_b_val', 'dusk_min_b', 60],
-  ['dusk_offset_b', 'dusk_offset_b_val', 'dusk_offset_b', 30],
+  ['dusk_min_b', 'dusk_min_b_val', 'dusk_min_b', 80],
+  ['dusk_offset_b', 'dusk_offset_b_val', 'dusk_offset_b', 40],
   ['min_t', 'min_t_val', 'min_t', 2200],
   ['max_t', 'max_t_val', 'max_t', 4000],
   ['dawn_min_t', 'dawn_min_t_val', 'dawn_min_t', 30],
   ['dusk_offset_t', 'dusk_offset_t_val', 'dusk_offset_t', 45],
-  ['dusk_min_t', 'dusk_min_t_val', 'dusk_min_t', 0],
+  ['dusk_min_t', 'dusk_min_t_val', 'dusk_min_t', 60],
 ];
 const params = {};
 paramDefs.forEach(([, , key, def]) => { params[key] = def; });
@@ -59,8 +59,7 @@ function computeTemperature(hour, p) {
   const sr = getSunriseHours(), ss = getSunsetHours();
   const dawnEnd = sr + p.dawn_min_t / 60;
   const duskStart = ss - p.dusk_offset_t / 60;
-  const duskEnd = ss + p.dusk_min_t / 60;
-  const totalDusk = (p.dusk_offset_t + p.dusk_min_t) / 60;
+  const duskEnd = duskStart + p.dusk_min_t / 60;
   let val;
   if (hour < sr) val = p.min_t;
   else if (hour <= dawnEnd) {
@@ -68,8 +67,8 @@ function computeTemperature(hour, p) {
       : p.min_t + (p.max_t - p.min_t) * easeInOutSine((hour - sr) / (p.dawn_min_t / 60));
   } else if (hour < duskStart) val = p.max_t;
   else if (hour <= duskEnd) {
-    val = totalDusk === 0 ? p.min_t
-      : p.max_t - (p.max_t - p.min_t) * easeInOutSine((hour - duskStart) / totalDusk);
+    val = p.dusk_min_t === 0 ? p.min_t
+      : p.max_t - (p.max_t - p.min_t) * easeInOutSine((hour - duskStart) / (p.dusk_min_t / 60));
   } else val = p.min_t;
   return Math.round(val);
 }
@@ -126,7 +125,7 @@ function buildCombinedOption(p) {
   // Temperature phase boundaries
   const tDawnEnd   = sr + p.dawn_min_t / 60;
   const tDuskStart = ss - p.dusk_offset_t / 60;
-  const tDuskEnd   = ss + p.dusk_min_t / 60;
+  const tDuskEnd   = tDuskStart + p.dusk_min_t / 60;
 
   const bData = generateCurve(computeBrightness, p);
   const tData = generateCurve(computeTemperature, p);
@@ -262,32 +261,34 @@ function generateCode() {
   const tplB = `{# --- KONFIGURACJA JASNOŚCI --- #}
 {% set min_b = ${p.min_b} %}
 {% set max_b = ${p.max_b} %}
-{% set dawn_min = ${p.dawn_min_b} %}
-{% set dusk_min = ${p.dusk_min_b} %}
-{% set dusk_offset_min = ${p.dusk_offset_b} %}
+{% set dawn_dur = ${p.dawn_min_b} * 60 %}
+{% set dusk_dur = ${p.dusk_min_b} * 60 %}
+{% set dusk_offset = ${p.dusk_offset_b} * 60 %}
 {% set sr_offset_min = ${sro} %}
 {% set ss_offset_min = ${sso} %}
 
-{# --- LOGIKA --- #}
-{% set next_sr = state_attr('sun.sun', 'next_rising') %}
-{% set next_ss = state_attr('sun.sun', 'next_setting') %}
-{% if next_sr and next_ss %}
-  {% set now_ts = as_timestamp(now()) %}
-  {% set sr_ts = as_timestamp(next_sr, now_ts) %}
-  {% set ss_ts = as_timestamp(next_ss, now_ts) %}
-  {% set sr = sr_ts if (sr_ts - now_ts) < 43200 else sr_ts - 86400 %}
-  {% set ss = ss_ts if (ss_ts - now_ts) < 43200 else ss_ts - 86400 %}
-  {% set sr = sr + (sr_offset_min * 60) %}
-  {% set ss = ss + (ss_offset_min * 60) %}
-  {% set dawn_dur = dawn_min * 60 %}
-  {% set dusk_dur = dusk_min * 60 %}
-  {% set dusk_offset = dusk_offset_min * 60 %}
+{# --- STABILNA LOGIKA CZASU --- #}
+{% set now_dt = now() %}
+{% set now_ts = as_timestamp(now_dt) %}
+{% set today = now_dt.date() %}
+
+{% set nr = as_datetime(state_attr('sun.sun', 'next_rising')) | as_local %}
+{% set ns = as_datetime(state_attr('sun.sun', 'next_setting')) | as_local %}
+
+{% if nr is not none and ns is not none %}
+  {% set sr_dt = nr if nr.date() == today else nr - timedelta(days=1) %}
+  {% set ss_dt = ns if ns.date() == today else ns - timedelta(days=1) %}
+  {% set sr = as_timestamp(sr_dt) + (sr_offset_min * 60) %}
+  {% set ss = as_timestamp(ss_dt) + (ss_offset_min * 60) %}
+
+  {% set dawn_end = sr + dawn_dur %}
   {% set dusk_start = ss - dusk_offset %}
   {% set dusk_end = ss + dusk_dur %}
   {% set total_dusk = dusk_offset + dusk_dur %}
+
   {% if now_ts < sr %}
     {{ min_b }}
-  {% elif now_ts <= (sr + dawn_dur) %}
+  {% elif now_ts <= dawn_end %}
     {% set progress = (now_ts - sr) / dawn_dur %}
     {% set eased = (3 - 2 * progress) * progress * progress %}
     {{ (min_b + (max_b - min_b) * eased) | int }}
@@ -307,39 +308,40 @@ function generateCode() {
   const tplT = `{# --- KONFIGURACJA TEMPERATURY BARWOWEJ --- #}
 {% set min_t = ${p.min_t} %}
 {% set max_t = ${p.max_t} %}
-{% set dawn_min = ${p.dawn_min_t} %}
-{% set dusk_offset_min = ${p.dusk_offset_t} %}
-{% set dusk_min = ${p.dusk_min_t} %}
+{% set dawn_dur = ${p.dawn_min_t} * 60 %}
+{% set dusk_dur = ${p.dusk_min_t} * 60 %}
+{% set dusk_offset = ${p.dusk_offset_t} * 60 %}
 {% set sr_offset_min = ${sro} %}
 {% set ss_offset_min = ${sso} %}
 
-{# --- LOGIKA --- #}
-{% set next_sr = state_attr('sun.sun', 'next_rising') %}
-{% set next_ss = state_attr('sun.sun', 'next_setting') %}
-{% if next_sr and next_ss %}
-  {% set now_ts = as_timestamp(now()) %}
-  {% set sr_ts = as_timestamp(next_sr, now_ts) %}
-  {% set ss_ts = as_timestamp(next_ss, now_ts) %}
-  {% set sr = sr_ts if (sr_ts - now_ts) < 43200 else sr_ts - 86400 %}
-  {% set ss = ss_ts if (ss_ts - now_ts) < 43200 else ss_ts - 86400 %}
-  {% set sr = sr + (sr_offset_min * 60) %}
-  {% set ss = ss + (ss_offset_min * 60) %}
-  {% set dawn_dur = dawn_min * 60 %}
-  {% set dusk_offset = dusk_offset_min * 60 %}
-  {% set dusk_dur = dusk_min * 60 %}
+{# --- STABILNA LOGIKA CZASU --- #}
+{% set now_dt = now() %}
+{% set now_ts = as_timestamp(now_dt) %}
+{% set today = now_dt.date() %}
+
+{% set nr = as_datetime(state_attr('sun.sun', 'next_rising')) | as_local %}
+{% set ns = as_datetime(state_attr('sun.sun', 'next_setting')) | as_local %}
+
+{% if nr is not none and ns is not none %}
+  {% set sr_dt = nr if nr.date() == today else nr - timedelta(days=1) %}
+  {% set ss_dt = ns if ns.date() == today else ns - timedelta(days=1) %}
+  {% set sr = as_timestamp(sr_dt) + (sr_offset_min * 60) %}
+  {% set ss = as_timestamp(ss_dt) + (ss_offset_min * 60) %}
+
+  {% set dawn_end = sr + dawn_dur %}
   {% set dusk_start = ss - dusk_offset %}
-  {% set dusk_end = ss + dusk_dur %}
-  {% set total_dusk = dusk_offset + dusk_dur %}
+  {% set dusk_end = dusk_start + dusk_dur %}
+
   {% if now_ts < sr %}
     {{ min_t }}
-  {% elif now_ts <= (sr + dawn_dur) %}
+  {% elif now_ts <= dawn_end %}
     {% set progress = (now_ts - sr) / dawn_dur %}
     {% set eased = (3 - 2 * progress) * progress * progress %}
     {{ (min_t + (max_t - min_t) * eased) | int }}
   {% elif now_ts < dusk_start %}
     {{ max_t }}
   {% elif now_ts <= dusk_end %}
-    {% set progress = (now_ts - dusk_start) / total_dusk %}
+    {% set progress = (now_ts - dusk_start) / dusk_dur %}
     {% set eased = (3 - 2 * progress) * progress * progress %}
     {{ (max_t - (max_t - min_t) * eased) | int }}
   {% else %}
