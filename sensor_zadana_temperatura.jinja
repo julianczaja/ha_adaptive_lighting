@@ -1,30 +1,30 @@
 {# --- KONFIGURACJA TEMPERATURY BARWOWEJ --- #}
 {% set min_t = 2200 %}
 {% set max_t = 4000 %}
-{% set dawn_dur = 30 * 60 %}      {# 30 min świtu #}
-{% set dusk_dur = 60 * 60 %}      {# 60 min zmierzchu #}
-{% set dusk_offset = 45 * 60 %}   {# start 45 min przed zachodem #}
+{% set dawn_dur = 30 * 60 %}
+{% set dusk_dur = 90 * 60 %}
+{% set dusk_offset = 30 * 60 %}
+{% set sr_offset_min = 0 %}
+{% set ss_offset_min = 120 %}
 
 {# --- STABILNA LOGIKA CZASU --- #}
 {% set now_dt = now() %}
 {% set now_ts = as_timestamp(now_dt) %}
 {% set today = now_dt.date() %}
 
-{# Pobranie czasu i normalizacja do dzisiejszej daty #}
 {% set nr = as_datetime(state_attr('sun.sun', 'next_rising')) | as_local %}
 {% set ns = as_datetime(state_attr('sun.sun', 'next_setting')) | as_local %}
 
 {% if nr is not none and ns is not none %}
-  {# Korekta: rano/wieczór zawsze odnosi się do dzisiejszego dnia kalendarzowego #}
-  {% set sr = as_timestamp(nr if nr.date() == today else nr - timedelta(days=1)) %}
-  {% set ss = as_timestamp(ns if ns.date() == today else ns - timedelta(days=1)) %}
+  {% set sr_dt = nr if nr.date() == today else nr - timedelta(days=1) %}
+  {% set ss_dt = ns if ns.date() == today else ns - timedelta(days=1) %}
+  {% set sr = as_timestamp(sr_dt) + (sr_offset_min * 60) %}
+  {% set ss = as_timestamp(ss_dt) + (ss_offset_min * 60) %}
 
-  {# Definicja okien czasowych #}
   {% set dawn_end = sr + dawn_dur %}
   {% set dusk_start = ss - dusk_offset %}
   {% set dusk_end = dusk_start + dusk_dur %}
 
-  {# --- LOGIKA PŁYNNEGO PRZEJŚCIA (Easing) --- #}
   {% if now_ts < sr %}
     {{ min_t }}
   {% elif now_ts <= dawn_end %}

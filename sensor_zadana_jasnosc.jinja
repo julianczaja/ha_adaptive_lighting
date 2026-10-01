@@ -1,34 +1,31 @@
 {# --- KONFIGURACJA JASNOŚCI --- #}
-{% set min_b = 20 %}
+{% set min_b = 25 %}
 {% set max_b = 100 %}
-{% set dawn_dur = 60 * 60 %}      {# 60 minut świtu (w sekundach) #}
-{% set dusk_dur = 80 * 60 %}      {# 80 minut zmierzchu (w sekundach) #}
-{% set dusk_offset = 40 * 60 %}   {# 40 minut przed zachodem słońca #}
+{% set dawn_dur = 60 * 60 %}
+{% set dusk_dur = 90 * 60 %}
+{% set dusk_offset = 40 * 60 %}
+{% set sr_offset_min = 0 %}
+{% set ss_offset_min = 120 %}
 
 {# --- STABILNA LOGIKA CZASU --- #}
 {% set now_dt = now() %}
 {% set now_ts = as_timestamp(now_dt) %}
 {% set today = now_dt.date() %}
 
-{# Pobranie czasu z HA i wymuszenie strefy lokalnej #}
 {% set nr = as_datetime(state_attr('sun.sun', 'next_rising')) | as_local %}
 {% set ns = as_datetime(state_attr('sun.sun', 'next_setting')) | as_local %}
 
 {% if nr is not none and ns is not none %}
-  {# Jeśli wschód/zachód jest już jutro, odejmij 1 dzień, by uzyskać dzisiejszy #}
   {% set sr_dt = nr if nr.date() == today else nr - timedelta(days=1) %}
   {% set ss_dt = ns if ns.date() == today else ns - timedelta(days=1) %}
+  {% set sr = as_timestamp(sr_dt) + (sr_offset_min * 60) %}
+  {% set ss = as_timestamp(ss_dt) + (ss_offset_min * 60) %}
 
-  {% set sr = as_timestamp(sr_dt) %}
-  {% set ss = as_timestamp(ss_dt) %}
-
-  {# Definicja faz dnia #}
   {% set dawn_end = sr + dawn_dur %}
   {% set dusk_start = ss - dusk_offset %}
   {% set dusk_end = ss + dusk_dur %}
   {% set total_dusk = dusk_offset + dusk_dur %}
 
-  {# --- OBLICZANIE JASNOŚCI (PŁYNNE PRZEJŚCIE) --- #}
   {% if now_ts < sr %}
     {{ min_b }}
   {% elif now_ts <= dawn_end %}
