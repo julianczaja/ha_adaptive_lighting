@@ -23,8 +23,13 @@
 #   - mode_on:  włączenie adaptacji w pokoju → natychmiastowe dopasowanie
 #   - manual:   ręczna zmiana jasności/barwy (UI, pilot) → paused
 #               Zmiany wywołane przez automatyzacje mają context.parent_id
-#               i są ignorowane.
-#   Polecenia są wysyłane tylko, gdy żarówka odbiega od celu.
+#               i są ignorowane. Zmiany z UI/aplikacji (context.user_id)
+#               pauzują od razu; zmiany bez kontekstu (pilot, raport żarówki)
+#               dopiero 10 s po włączeniu – żarówka tuż po podaniu prądu
+#               raportuje swój stan startowy.
+#   Polecenia są wysyłane tylko, gdy żarówka odbiega od celu, a pokój
+#   jest nadal aktywny. mode: parallel – pauza działa od razu, także
+#   w trakcie opóźnień po włączeniu światła.
 #
 # ═══════════════════════════════════════════════════════════════
 
@@ -140,8 +145,8 @@ conditions:
          or rooms | selectattr('switch', 'is_state', 'on')
               | map(attribute='lights') | sum(start=[])
               | select('is_state', 'on') | list | count > 0 }}
-  # Ręczna zmiana: nie przez automatyzację, nie tuż po włączeniu,
-  # w aktywnym pokoju i wyraźnie inna niż cel
+  # Ręczna zmiana: nie przez automatyzację, z UI od razu / bez kontekstu
+  # dopiero 10 s po włączeniu, w aktywnym pokoju i wyraźnie inna niż cel
   - condition: template
     value_template: >-
       {%- set b = trigger.to_state.attributes.brightness | int(-1)
@@ -154,8 +159,9 @@ conditions:
              and trigger.from_state.state == 'on'
              and trigger.to_state.state == 'on'
              and trigger.to_state.context.parent_id is none
-             and as_timestamp(trigger.to_state.last_updated)
-                 - as_timestamp(trigger.from_state.last_changed) > 10
+             and (trigger.to_state.context.user_id is not none
+                  or as_timestamp(trigger.to_state.last_updated)
+                     - as_timestamp(trigger.from_state.last_changed) > 10)
              and ((b > 0 and (b - (target_b * 2.55) | round(0)) | abs > 20)
                   or (k > 0 and (k - target_k) | abs > 300))) }}
 
@@ -219,11 +225,12 @@ actions:
                                 b_now: "{{ state_attr(repeat.item, 'brightness') | int(-1) }}"
                                 trans: "{{ 1 if trigger.id == 'target' else 0 }}"
 
-                            # Wysyłaj tylko, gdy żarówka odbiega od celu
+                            # Wysyłaj tylko, gdy pokój jest nadal aktywny (ręczna zmiana
+                            # mogła go właśnie wstrzymać) i żarówka odbiega od celu
                             # (temperatura i jasność osobno – żarówki IKEA nie lubią obu naraz)
                             - if:
                                 - condition: template
-                                  value_template: "{{ (k_now - target_k) | abs >= 30 }}"
+                                  value_template: "{{ is_state(room.switch, 'on') and (k_now - target_k) | abs >= 30 }}"
                               then:
                                 - action: light.turn_on
                                   target:
@@ -236,7 +243,7 @@ actions:
 
                             - if:
                                 - condition: template
-                                  value_template: "{{ (b_now - (target_b * 2.55) | round(0)) | abs >= 3 }}"
+                                  value_template: "{{ is_state(room.switch, 'on') and (b_now - (target_b * 2.55) | round(0)) | abs >= 3 }}"
                               then:
                                 - action: light.turn_on
                                   target:
@@ -245,5 +252,7 @@ actions:
                                     brightness_pct: "{{ target_b }}"
                                     transition: "{{ trans }}"
 
-mode: queued
+mode: parallel
 max: 25
+trace:
+  stored_traces: 20
