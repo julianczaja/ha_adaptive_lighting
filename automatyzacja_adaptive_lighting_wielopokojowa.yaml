@@ -6,12 +6,25 @@
 #   1. Stwórz input_select.oswietlenie_adaptacyjne_NAZWA w HA
 #      (opcje: on / off / paused)
 #   2. Dopisz go do listy "rooms" poniżej – podaj switch i listę żarówek
-#   3. Przełącznik w UI HA steruje adaptacją dla pokoju
+#   3. Dopisz żarówki do triggerów light_on i manual (×2),
+#      a input_select do triggera mode_on
+#   4. Przełącznik w UI HA steruje adaptacją dla pokoju
 #
 # Stany przełącznika:
 #   on     – adaptacja aktywna
 #   off    – adaptacja wyłączona (pokój ignorowany)
 #   paused – wstrzymana (użytkownik ręcznie zmienił światło)
+#
+# Działanie:
+#   - target:   zmiana zadanej jasności/barwy (tylko w trakcie świtu
+#               i zmierzchu) → dopasowanie świecących żarówek
+#   - light_on: włączenie żarówki → wznowienie pokoju z paused
+#               i dopasowanie (+ kontrolna runda po 3 s)
+#   - mode_on:  włączenie adaptacji w pokoju → natychmiastowe dopasowanie
+#   - manual:   ręczna zmiana jasności/barwy (UI, pilot) → paused
+#               Zmiany wywołane przez automatyzacje mają context.parent_id
+#               i są ignorowane.
+#   Polecenia są wysyłane tylko, gdy żarówka odbiega od celu.
 #
 # ═══════════════════════════════════════════════════════════════
 
@@ -19,10 +32,17 @@ alias: "Oświetlenie: Adaptive Lighting (wielopokojowe)"
 description: >-
   Jedna automatyzacja dla wielu pomieszczeń. Każdy pokój ma własny
   input_select (on/off/paused). Sensory jasności/temperatury są globalne.
-  Wykrywa ręczne zmiany jasności/temperatury i automatycznie pauzuje.
+  Reaguje na zmianę zadanych wartości, włączenie światła i włączenie
+  adaptacji; polecenia wysyła tylko, gdy żarówka odbiega od celu.
+  Ręczna zmiana jasności/barwy wstrzymuje pokój.
+
 triggers:
-  - trigger: time_pattern
-    minutes: /1
+  # Zmiana zadanej jasności / temperatury barwowej
+  - trigger: state
+    entity_id:
+      - sensor.zadana_jasnosc_swiatla
+      - sensor.zadana_temperatura_swiatla
+    id: target
   # Włączenie światła – natychmiastowa reakcja (także auto-resume z paused)
   - trigger: state
     entity_id:
@@ -37,7 +57,8 @@ triggers:
       - light.lazienka
       - light.maly_pokoj
     to: "on"
-  # Włączenie przełącznika adaptive lighting – natychmiastowa aktualizacja pokoju
+    id: light_on
+  # Włączenie adaptacji dla pokoju
   - trigger: state
     entity_id:
       - input_select.oswietlenie_adaptacyjne_sypialnia
@@ -47,157 +68,182 @@ triggers:
       - input_select.oswietlenie_adaptacyjne_maly_pokoj
       - input_select.oswietlenie_adaptacyjne_kuchnia
     to: "on"
+    id: mode_on
+  # Zmiana jasności / barwy żarówki – filtrowana w warunkach (ręczna czy nie)
+  - trigger: state
+    entity_id: &manual_lights
+      - light.sypialnia
+      - light.salon_kanapa_stol
+      - light.salon_kanapa_srodek
+      - light.salon_kanapa_sciana
+      - light.salon_srodek_okno
+      - light.salon_srodek_wejscie
+      - light.korytarz
+      - light.kuchnia_wejscie
+      - light.lazienka
+      - light.maly_pokoj
+    attribute: brightness
+    id: manual
+  - trigger: state
+    entity_id: *manual_lights
+    attribute: color_temp_kelvin
+    id: manual
+
+variables:
+  rooms:
+    - switch: input_select.oswietlenie_adaptacyjne_sypialnia
+      lights:
+        - light.sypialnia
+      delay_on: true
+    - switch: input_select.oswietlenie_adaptacyjne_salon
+      lights:
+        - light.salon_kanapa_stol
+        - light.salon_kanapa_srodek
+        - light.salon_kanapa_sciana
+        - light.salon_srodek_okno
+        - light.salon_srodek_wejscie
+      delay_on: true
+    - switch: input_select.oswietlenie_adaptacyjne_lazienka
+      lights:
+        - light.lazienka
+      delay_on: true
+    - switch: input_select.oswietlenie_adaptacyjne_korytarz
+      lights:
+        - light.korytarz
+      delay_on: true
+    - switch: input_select.oswietlenie_adaptacyjne_maly_pokoj
+      lights:
+        - light.maly_pokoj
+      delay_on: true
+    - switch: input_select.oswietlenie_adaptacyjne_kuchnia
+      lights:
+        - light.kuchnia_wejscie
+      delay_on: true
+  target_b: "{{ states('sensor.zadana_jasnosc_swiatla') | int(0) }}"
+  target_k: "{{ states('sensor.zadana_temperatura_swiatla') | int(0) }}"
+  # input_select pokoju, w którym zmieniono żarówkę (tylko dla triggera manual)
+  manual_room: >-
+    {{ (rooms | selectattr('lights', 'contains', trigger.entity_id)
+        | map(attribute='switch') | list + [''])[0]
+       if trigger.id == 'manual' else '' }}
+
+conditions:
+  # Zadane wartości muszą być dostępne
+  - condition: template
+    value_template: >-
+      {{ is_number(states('sensor.zadana_jasnosc_swiatla'))
+         and is_number(states('sensor.zadana_temperatura_swiatla')) }}
+  # Zmiana celu: tylko gdy w aktywnym pokoju świeci jakaś żarówka
+  - condition: template
+    value_template: >-
+      {{ trigger.id != 'target'
+         or rooms | selectattr('switch', 'is_state', 'on')
+              | map(attribute='lights') | sum(start=[])
+              | select('is_state', 'on') | list | count > 0 }}
+  # Ręczna zmiana: nie przez automatyzację, nie tuż po włączeniu,
+  # w aktywnym pokoju i wyraźnie inna niż cel
+  - condition: template
+    value_template: >-
+      {%- set b = trigger.to_state.attributes.brightness | int(-1)
+            if trigger.id == 'manual' else -1 -%}
+      {%- set k = trigger.to_state.attributes.color_temp_kelvin | int(-1)
+            if trigger.id == 'manual' else -1 -%}
+      {{ trigger.id != 'manual'
+         or (manual_room != ''
+             and is_state(manual_room, 'on')
+             and trigger.from_state.state == 'on'
+             and trigger.to_state.state == 'on'
+             and trigger.to_state.context.parent_id is none
+             and as_timestamp(trigger.to_state.last_updated)
+                 - as_timestamp(trigger.from_state.last_changed) > 10
+             and ((b > 0 and (b - (target_b * 2.55) | round(0)) | abs > 20)
+                  or (k > 0 and (k - target_k) | abs > 300))) }}
 
 actions:
-  # ── Mapa pokoi ──────────────────────────────────────────
-  # Dopisz swój pokój tutaj:
-  - variables:
-      rooms:
-        - switch: input_select.oswietlenie_adaptacyjne_sypialnia
-          lights:
-            - light.sypialnia
-          delay_on: true   # 1.5s delay dla IKEA Tradfri
-
-        - switch: input_select.oswietlenie_adaptacyjne_salon
-          lights:
-            - light.salon_kanapa_stol
-            - light.salon_kanapa_srodek
-            - light.salon_kanapa_sciana
-            - light.salon_srodek_okno
-            - light.salon_srodek_wejscie
-          delay_on: true
-
-        - switch: input_select.oswietlenie_adaptacyjne_lazienka
-          lights:
-            - light.lazienka
-          delay_on: true
-
-        - switch: input_select.oswietlenie_adaptacyjne_korytarz
-          lights:
-            - light.korytarz
-          delay_on: true
-
-        - switch: input_select.oswietlenie_adaptacyjne_maly_pokoj
-          lights:
-            - light.maly_pokoj
-          delay_on: true
-
-        - switch: input_select.oswietlenie_adaptacyjne_kuchnia
-          lights:
-            - light.kuchnia_wejscie
-          delay_on: true
-
-  # ── Iteracja po pokojach ───────────────────────────────
-  - repeat:
-      for_each: "{{ rooms }}"
-      sequence:
-        # ── Auto-resume: off→on światła gdy paused ─────────
-        # Jeśli pokój był spauzowany i właśnie zapalono światło → wznów
-        - if:
-            - condition: template
-              value_template: "{{ is_state(repeat.item.switch, 'paused') }}"
-            - condition: template
-              value_template: >-
-                {{ trigger.platform == 'state'
-                   and trigger.entity_id in repeat.item.lights
-                   and trigger.to_state.state == 'on' }}
-          then:
-            - action: input_select.select_option
-              target:
-                entity_id: "{{ repeat.item.switch }}"
-              data:
-                option: "on"
-
-        # ── Pomiń jeśli nieaktywny ─────────────────────────
-        - condition: template
-          value_template: "{{ is_state(repeat.item.switch, 'on') }}"
-
-        # Delay tylko gdy użytkownik ręcznie włączył ŻARÓWKĘ (Tradfri fix).
-        # Przy włączeniu switcha adaptacyjnego delay jest zbędny – światło już świeci.
-        - if:
-            - condition: template
-              value_template: >-
-                {{ trigger.platform == 'state'
-                   and trigger.entity_id in repeat.item.lights
-                   and repeat.item.delay_on }}
-          then:
-            - delay: "00:00:01.500"
-
-        # ── Wykrywanie ręcznej zmiany (tylko na time_pattern) ─
-        # Sprawdź każdą włączoną żarówkę – jeśli jasność lub temperatura
-        # odbiega od wartości sensora → użytkownik ręcznie zmienił → pauza.
-        - if:
-            - condition: template
-              value_template: "{{ trigger.platform == 'time_pattern' }}"
-          then:
+  - choose:
+      # Ręczna zmiana → wstrzymaj pokój
+      - conditions:
+          - condition: trigger
+            id: manual
+        sequence:
+          - action: input_select.select_option
+            target:
+              entity_id: "{{ manual_room }}"
+            data:
+              option: paused
+    default:
+      - repeat:
+          for_each: "{{ rooms }}"
+          sequence:
             - variables:
-                room_switch: "{{ repeat.item.switch }}"
-            - repeat:
-                for_each: "{{ repeat.item.lights }}"
-                sequence:
-                  - if:
-                      - condition: template
-                        value_template: "{{ is_state(room_switch, 'on') and is_state(repeat.item, 'on') }}"
-                      - condition: template
-                        value_template: >-
-                          {% set target_b = (states('sensor.zadana_jasnosc_swiatla')|float(50) * 2.55)|round(0) %}
-                          {% set b = state_attr(repeat.item, 'brightness')|int(-1) %}
-                          {{ b > 0 and (b - target_b)|abs > 20 }}
-                    then:
-                      - action: input_select.select_option
-                        target:
-                          entity_id: "{{ room_switch }}"
-                        data:
-                          option: "paused"
-                  - if:
-                      - condition: template
-                        value_template: "{{ is_state(room_switch, 'on') and is_state(repeat.item, 'on') }}"
-                      - condition: template
-                        value_template: >-
-                          {% set target_t = states('sensor.zadana_temperatura_swiatla')|int(3000) %}
-                          {% set t = state_attr(repeat.item, 'color_temp_kelvin')|int(-1) %}
-                          {{ t > 0 and (t - target_t)|abs > 300 }}
-                    then:
-                      - action: input_select.select_option
-                        target:
-                          entity_id: "{{ room_switch }}"
-                        data:
-                          option: "paused"
+                room: "{{ repeat.item }}"
+                fresh_on: "{{ trigger.id == 'light_on' and trigger.entity_id in repeat.item.lights }}"
 
-        # ── Dodatkowe sprawdzenie: czy nadal aktywne? ─────
-        # (blok wykrywania mógł przestawić select na paused)
-        - condition: template
-          value_template: "{{ is_state(repeat.item.switch, 'on') }}"
+            # Auto-resume: włączenie światła w pokoju wstrzymanym
+            - if:
+                - condition: template
+                  value_template: "{{ fresh_on and is_state(room.switch, 'paused') }}"
+              then:
+                - action: input_select.select_option
+                  target:
+                    entity_id: "{{ room.switch }}"
+                  data:
+                    option: "on"
 
-        # Iteracja po żarówkach w pokoju
-        - repeat:
-            for_each: "{{ repeat.item.lights }}"
-            sequence:
-              - condition: template
-                value_template: "{{ is_state(repeat.item, 'on') }}"
+            - if:
+                - condition: template
+                  value_template: "{{ is_state(room.switch, 'on') }}"
+              then:
+                # Żarówka pod zwykłym włącznikiem potrzebuje chwili po podaniu zasilania
+                - if:
+                    - condition: template
+                      value_template: "{{ fresh_on and room.delay_on }}"
+                  then:
+                    - delay: "00:00:01"
 
-              - variables:
-                  target_temp: >-
-                    {{ states('sensor.zadana_temperatura_swiatla') | int(3000) }}
-                  target_brightness: >-
-                    {{ states('sensor.zadana_jasnosc_swiatla') | int(50) }}
-                  trans: "{{ 1 if trigger.platform == 'time_pattern' else 0 }}"
+                # Po włączeniu światła druga, kontrolna runda po 3 s
+                - repeat:
+                    count: "{{ 2 if fresh_on else 1 }}"
+                    sequence:
+                      - if:
+                          - condition: template
+                            value_template: "{{ repeat.index > 1 }}"
+                        then:
+                          - delay: "00:00:03"
 
-              - action: light.turn_on
-                target:
-                  entity_id: "{{ repeat.item }}"
-                data:
-                  color_temp_kelvin: "{{ target_temp }}"
-                  transition: "{{ trans }}"
+                      - repeat:
+                          for_each: "{{ room.lights | select('is_state', 'on') | list }}"
+                          sequence:
+                            - variables:
+                                k_now: "{{ state_attr(repeat.item, 'color_temp_kelvin') | int(-1) }}"
+                                b_now: "{{ state_attr(repeat.item, 'brightness') | int(-1) }}"
+                                trans: "{{ 1 if trigger.id == 'target' else 0 }}"
 
-              - delay:
-                  milliseconds: 200
+                            # Wysyłaj tylko, gdy żarówka odbiega od celu
+                            # (temperatura i jasność osobno – żarówki IKEA nie lubią obu naraz)
+                            - if:
+                                - condition: template
+                                  value_template: "{{ (k_now - target_k) | abs >= 30 }}"
+                              then:
+                                - action: light.turn_on
+                                  target:
+                                    entity_id: "{{ repeat.item }}"
+                                  data:
+                                    color_temp_kelvin: "{{ target_k }}"
+                                    transition: "{{ trans }}"
+                                - delay:
+                                    milliseconds: 100
 
-              - action: light.turn_on
-                target:
-                  entity_id: "{{ repeat.item }}"
-                data:
-                  brightness_pct: "{{ target_brightness }}"
-                  transition: "{{ trans }}"
+                            - if:
+                                - condition: template
+                                  value_template: "{{ (b_now - (target_b * 2.55) | round(0)) | abs >= 3 }}"
+                              then:
+                                - action: light.turn_on
+                                  target:
+                                    entity_id: "{{ repeat.item }}"
+                                  data:
+                                    brightness_pct: "{{ target_b }}"
+                                    transition: "{{ trans }}"
 
-mode: restart
+mode: queued
+max: 25
