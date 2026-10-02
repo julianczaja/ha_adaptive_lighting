@@ -1,0 +1,90 @@
+# ═══════════════════════════════════════════════════════════════
+# Oświetlenie adaptacyjne – uzgodnij
+# HA: script.oswietlenie_adaptacyjne_uzgodnij
+# ═══════════════════════════════════════════════════════════════
+#
+# Elementy systemu (każdy w osobnym pliku):
+#   automatyzacja_adaptive_lighting_wielopokojowa.yaml              – sterowanie
+#   automatyzacja_adaptive_lighting_wykrywanie_recznych_zmian.yaml  – pauza po ręcznej zmianie
+#   skrypt_adaptive_lighting_uzgodnij.yaml                          – dopasowanie wszystkich żarówek
+#   skrypt_adaptive_lighting_swieza_zarowka.yaml                    – dopasowanie świeżo zapalonej żarówki
+#   sensor_zadana_jasnosc.jinja, sensor_zadana_temperatura.jinja    – zadane wartości (pomocnicy template)
+#
+# Lista żarówek (bulbs) jest w obu automatyzacjach – musi być zgodna.
+#   entity – encja światła          switch – input_select pokoju (on/off/paused)
+#   z2m    – friendly_name w Z2M    dumb   – żarówka pod zwykłym (niesmart) wyłącznikiem
+#
+# Wywoływany przez 'sterowanie' (zmiana zadanych wartości, co 5 min,
+# start HA, włączenie trybu pokoju) z parametrem bulbs.
+#
+# ═══════════════════════════════════════════════════════════════
+
+alias: 'Oświetlenie adaptacyjne: uzgodnij'
+description: 'Ustawia zadaną barwę i jasność wszystkim zapalonym żarówkom w pokojach z trybem ''on'' (tylko gdy
+  odbiegają od celu). Zgaszonym żarówkom na smart switchach ustawia barwę i on_level, żeby zapaliły się od razu
+  z właściwym światłem. Wywoływany przez automatyzację ''Oświetlenie adaptacyjne: sterowanie''.'
+mode: restart
+icon: mdi:lightbulb-auto
+fields:
+  bulbs:
+    description: Lista żarówek (z automatyzacji)
+    required: true
+sequence:
+- delay:
+    milliseconds: 500
+- variables:
+    tb: '{{ states(''sensor.zadana_jasnosc_swiatla'') | int(0) }}'
+    tk: '{{ states(''sensor.zadana_temperatura_swiatla'') | int(0) }}'
+- condition: template
+  value_template: '{{ tb > 0 and tk > 0 }}'
+- repeat:
+    for_each: '{{ bulbs | selectattr(''switch'', ''is_state'', ''on'') | list }}'
+    sequence:
+    - variables:
+        bulb: '{{ repeat.item }}'
+        k_now: '{{ state_attr(repeat.item.entity, ''color_temp_kelvin'') | int(-1) }}'
+        b_now: '{{ state_attr(repeat.item.entity, ''brightness'') | int(-1) }}'
+    - choose:
+      - conditions:
+        - condition: template
+          value_template: '{{ is_state(bulb.entity, ''on'') }}'
+        sequence:
+        - if:
+          - condition: template
+            value_template: '{{ is_state(bulb.switch, ''on'') and (k_now - tk) | abs >= 30 }}'
+          then:
+          - action: light.turn_on
+            continue_on_error: true
+            target:
+              entity_id: '{{ bulb.entity }}'
+            data:
+              color_temp_kelvin: '{{ tk }}'
+              transition: 0
+          - delay:
+              milliseconds: 150
+        - if:
+          - condition: template
+            value_template: '{{ is_state(bulb.switch, ''on'') and (b_now - (tb * 2.55) | round(0)) | abs >= 3 }}'
+          then:
+          - action: light.turn_on
+            continue_on_error: true
+            target:
+              entity_id: '{{ bulb.entity }}'
+            data:
+              brightness_pct: '{{ tb }}'
+              transition: 1
+          - delay:
+              milliseconds: 150
+      - conditions:
+        - condition: template
+          value_template: '{{ is_state(bulb.entity, ''off'') and not bulb.dumb and is_state(bulb.switch, ''on'')
+            }}'
+        sequence:
+        - action: mqtt.publish
+          continue_on_error: true
+          data:
+            topic: zigbee2mqtt/{{ bulb.z2m }}/set
+            payload: '{"color_temp": {{ [[(1000000 / tk) | round(0) | int, 250] | max, 454] | min }}, "level_config":
+              {"on_level": {{ [[(tb * 2.54) | round(0) | int, 1] | max, 254] | min }}}}'
+        - delay:
+            milliseconds: 150

@@ -1,258 +1,299 @@
 # ═══════════════════════════════════════════════════════════════
-# Adaptive Lighting – automatyzacja wielopokojowa
+# Oświetlenie adaptacyjne – sterowanie
+# HA: automation.oswietlenie_adaptive_lighting_wielopokojowe (id 1780307109863)
 # ═══════════════════════════════════════════════════════════════
 #
-# Jak dodać nowy pokój:
-#   1. Stwórz input_select.oswietlenie_adaptacyjne_NAZWA w HA
-#      (opcje: on / off / paused)
-#   2. Dopisz go do listy "rooms" poniżej – podaj switch i listę żarówek
-#   3. Dopisz żarówki do triggerów light_on i manual (×2),
-#      a input_select do triggera mode_on
-#   4. Przełącznik w UI HA steruje adaptacją dla pokoju
+# Elementy systemu (każdy w osobnym pliku):
+#   automatyzacja_adaptive_lighting_wielopokojowa.yaml              – sterowanie
+#   automatyzacja_adaptive_lighting_wykrywanie_recznych_zmian.yaml  – pauza po ręcznej zmianie
+#   skrypt_adaptive_lighting_uzgodnij.yaml                          – dopasowanie wszystkich żarówek
+#   skrypt_adaptive_lighting_swieza_zarowka.yaml                    – dopasowanie świeżo zapalonej żarówki
+#   sensor_zadana_jasnosc.jinja, sensor_zadana_temperatura.jinja    – zadane wartości (pomocnicy template)
 #
-# Stany przełącznika:
+# Lista żarówek (bulbs) jest w obu automatyzacjach – musi być zgodna.
+#   entity – encja światła          switch – input_select pokoju (on/off/paused)
+#   z2m    – friendly_name w Z2M    dumb   – żarówka pod zwykłym (niesmart) wyłącznikiem
+#
+# Jak dodać żarówkę:
+#   1. Dopisz ją do bulbs tutaj i w automatyzacji 'wykrywanie ręcznych zmian'
+#   2. Dopisz jej encję do triggerów 'fresh' i 'off' poniżej
+#   Nowy pokój: dodatkowo input_select.oswietlenie_adaptacyjne_NAZWA
+#   (opcje: on / off / paused) w triggerze 'mode'
+#
+# Stany przełącznika pokoju:
 #   on     – adaptacja aktywna
-#   off    – adaptacja wyłączona (pokój ignorowany)
-#   paused – wstrzymana (użytkownik ręcznie zmienił światło)
-#
-# Działanie:
-#   - target:   zmiana zadanej jasności/barwy (tylko w trakcie świtu
-#               i zmierzchu) → dopasowanie świecących żarówek
-#   - light_on: włączenie żarówki → wznowienie pokoju z paused
-#               i dopasowanie (+ kontrolna runda po 3 s)
-#   - mode_on:  włączenie adaptacji w pokoju → natychmiastowe dopasowanie
-#   - manual:   ręczna zmiana jasności/barwy (UI, pilot) → paused
-#               Zmiany wywołane przez automatyzacje mają context.parent_id
-#               i są ignorowane. Zmiany z UI/aplikacji (context.user_id)
-#               pauzują od razu; zmiany bez kontekstu (pilot, raport żarówki)
-#               dopiero 10 s po włączeniu – żarówka tuż po podaniu prądu
-#               raportuje swój stan startowy.
-#   Polecenia są wysyłane tylko, gdy żarówka odbiega od celu, a pokój
-#   jest nadal aktywny. mode: parallel – pauza działa od razu, także
-#   w trakcie opóźnień po włączeniu światła.
+#   off    – adaptacja wyłączona (żarówki na zwykłych wyłącznikach startują
+#            z ostatnimi ustawieniami)
+#   paused – wstrzymana (ręczna zmiana); zdejmuje ją zgaszenie wszystkich
+#            świateł w pokoju albo użycie fizycznego wyłącznika
 #
 # ═══════════════════════════════════════════════════════════════
 
-alias: "Oświetlenie: Adaptive Lighting (wielopokojowe)"
-description: >-
-  Jedna automatyzacja dla wielu pomieszczeń. Każdy pokój ma własny
-  input_select (on/off/paused). Sensory jasności/temperatury są globalne.
-  Reaguje na zmianę zadanych wartości, włączenie światła i włączenie
-  adaptacji; polecenia wysyła tylko, gdy żarówka odbiega od celu.
-  Ręczna zmiana jasności/barwy wstrzymuje pokój.
-
+alias: 'Oświetlenie adaptacyjne: sterowanie'
+description: Steruje oświetleniem adaptacyjnym. Każdy pokój ma input_select (on/off/paused). Zmiana zadanych wartości,
+  kontrola co 5 min i start HA uruchamiają skrypt 'uzgodnij'. Zapalenie żarówki (zmiana stanu lub device_announce
+  z Z2M po podaniu zasilania) uruchamia skrypt 'świeżo zapalona żarówka'. Pauzę (ustawianą przez automatyzację 'wykrywanie
+  ręcznych zmian') zdejmuje zgaszenie wszystkich świateł w pokoju albo użycie fizycznego wyłącznika. Lista żarówek
+  (bulbs) musi być zgodna z listą w automatyzacji 'wykrywanie ręcznych zmian'.
 triggers:
-  # Zmiana zadanej jasności / temperatury barwowej
-  - trigger: state
-    entity_id:
-      - sensor.zadana_jasnosc_swiatla
-      - sensor.zadana_temperatura_swiatla
-    id: target
-  # Włączenie światła – natychmiastowa reakcja (także auto-resume z paused)
-  - trigger: state
-    entity_id:
-      - light.sypialnia
-      - light.salon_kanapa_stol
-      - light.salon_kanapa_srodek
-      - light.salon_kanapa_sciana
-      - light.salon_srodek_okno
-      - light.salon_srodek_wejscie
-      - light.korytarz
-      - light.kuchnia_wejscie
-      - light.lazienka
-      - light.maly_pokoj
-    to: "on"
-    id: light_on
-  # Włączenie adaptacji dla pokoju
-  - trigger: state
-    entity_id:
-      - input_select.oswietlenie_adaptacyjne_sypialnia
-      - input_select.oswietlenie_adaptacyjne_salon
-      - input_select.oswietlenie_adaptacyjne_lazienka
-      - input_select.oswietlenie_adaptacyjne_korytarz
-      - input_select.oswietlenie_adaptacyjne_maly_pokoj
-      - input_select.oswietlenie_adaptacyjne_kuchnia
-    to: "on"
-    id: mode_on
-  # Zmiana jasności / barwy żarówki – filtrowana w warunkach (ręczna czy nie)
-  - trigger: state
-    entity_id: &manual_lights
-      - light.sypialnia
-      - light.salon_kanapa_stol
-      - light.salon_kanapa_srodek
-      - light.salon_kanapa_sciana
-      - light.salon_srodek_okno
-      - light.salon_srodek_wejscie
-      - light.korytarz
-      - light.kuchnia_wejscie
-      - light.lazienka
-      - light.maly_pokoj
-    attribute: brightness
-    id: manual
-  - trigger: state
-    entity_id: *manual_lights
-    attribute: color_temp_kelvin
-    id: manual
-
-variables:
-  rooms:
-    - switch: input_select.oswietlenie_adaptacyjne_sypialnia
-      lights:
-        - light.sypialnia
-      delay_on: true
-    - switch: input_select.oswietlenie_adaptacyjne_salon
-      lights:
-        - light.salon_kanapa_stol
-        - light.salon_kanapa_srodek
-        - light.salon_kanapa_sciana
-        - light.salon_srodek_okno
-        - light.salon_srodek_wejscie
-      delay_on: true
-    - switch: input_select.oswietlenie_adaptacyjne_lazienka
-      lights:
-        - light.lazienka
-      delay_on: true
-    - switch: input_select.oswietlenie_adaptacyjne_korytarz
-      lights:
-        - light.korytarz
-      delay_on: true
-    - switch: input_select.oswietlenie_adaptacyjne_maly_pokoj
-      lights:
-        - light.maly_pokoj
-      delay_on: true
-    - switch: input_select.oswietlenie_adaptacyjne_kuchnia
-      lights:
-        - light.kuchnia_wejscie
-      delay_on: true
-  target_b: "{{ states('sensor.zadana_jasnosc_swiatla') | int(0) }}"
-  target_k: "{{ states('sensor.zadana_temperatura_swiatla') | int(0) }}"
-  # input_select pokoju, w którym zmieniono żarówkę (tylko dla triggera manual)
-  manual_room: >-
-    {{ (rooms | selectattr('lights', 'contains', trigger.entity_id)
-        | map(attribute='switch') | list + [''])[0]
-       if trigger.id == 'manual' else '' }}
-
-conditions:
-  # Zadane wartości muszą być dostępne
-  - condition: template
-    value_template: >-
-      {{ is_number(states('sensor.zadana_jasnosc_swiatla'))
-         and is_number(states('sensor.zadana_temperatura_swiatla')) }}
-  # Zmiana celu: tylko gdy w aktywnym pokoju świeci jakaś żarówka
-  - condition: template
-    value_template: >-
-      {{ trigger.id != 'target'
-         or rooms | selectattr('switch', 'is_state', 'on')
-              | map(attribute='lights') | sum(start=[])
-              | select('is_state', 'on') | list | count > 0 }}
-  # Ręczna zmiana: nie przez automatyzację, z UI od razu / bez kontekstu
-  # dopiero 10 s po włączeniu, w aktywnym pokoju i wyraźnie inna niż cel
-  - condition: template
-    value_template: >-
-      {%- set b = trigger.to_state.attributes.brightness | int(-1)
-            if trigger.id == 'manual' else -1 -%}
-      {%- set k = trigger.to_state.attributes.color_temp_kelvin | int(-1)
-            if trigger.id == 'manual' else -1 -%}
-      {{ trigger.id != 'manual'
-         or (manual_room != ''
-             and is_state(manual_room, 'on')
-             and trigger.from_state.state == 'on'
-             and trigger.to_state.state == 'on'
-             and trigger.to_state.context.parent_id is none
-             and (trigger.to_state.context.user_id is not none
-                  or as_timestamp(trigger.to_state.last_updated)
-                     - as_timestamp(trigger.from_state.last_changed) > 10)
-             and ((b > 0 and (b - (target_b * 2.55) | round(0)) | abs > 20)
-                  or (k > 0 and (k - target_k) | abs > 300))) }}
-
+- trigger: state
+  entity_id:
+  - sensor.zadana_jasnosc_swiatla
+  - sensor.zadana_temperatura_swiatla
+  id: target
+- trigger: time_pattern
+  minutes: /5
+  id: reconcile
+- trigger: homeassistant
+  event: start
+  id: start
+- trigger: state
+  entity_id:
+  - input_select.oswietlenie_adaptacyjne_korytarz
+  - input_select.oswietlenie_adaptacyjne_kuchnia
+  - input_select.oswietlenie_adaptacyjne_lazienka
+  - input_select.oswietlenie_adaptacyjne_maly_pokoj
+  - input_select.oswietlenie_adaptacyjne_salon
+  - input_select.oswietlenie_adaptacyjne_sypialnia
+  to: null
+  id: mode
+- trigger: state
+  entity_id:
+  - light.sypialnia
+  - light.salon_kanapa_stol
+  - light.salon_kanapa_srodek
+  - light.salon_kanapa_sciana
+  - light.salon_srodek_okno
+  - light.salon_srodek_wejscie
+  - light.lazienka
+  - light.korytarz
+  - light.maly_pokoj
+  - light.kuchnia_wejscie
+  from:
+  - 'off'
+  - unavailable
+  to: 'on'
+  id: fresh
+- trigger: mqtt
+  topic: zigbee2mqtt/bridge/event
+  value_template: '{{ value_json.type }}'
+  payload: device_announce
+  id: announce
+- trigger: state
+  entity_id:
+  - light.sypialnia
+  - light.salon_kanapa_stol
+  - light.salon_kanapa_srodek
+  - light.salon_kanapa_sciana
+  - light.salon_srodek_okno
+  - light.salon_srodek_wejscie
+  - light.lazienka
+  - light.korytarz
+  - light.maly_pokoj
+  - light.kuchnia_wejscie
+  from: 'on'
+  to:
+  - 'off'
+  - unavailable
+  id: 'off'
 actions:
-  - choose:
-      # Ręczna zmiana → wstrzymaj pokój
-      - conditions:
-          - condition: trigger
-            id: manual
-        sequence:
-          - action: input_select.select_option
-            target:
-              entity_id: "{{ manual_room }}"
-            data:
-              option: paused
-    default:
+- choose:
+  - conditions:
+    - condition: trigger
+      id:
+      - target
+      - reconcile
+      - start
+    sequence:
+    - if:
+      - condition: trigger
+        id: start
+      then:
+      - delay:
+          seconds: 30
+    - action: script.turn_on
+      target:
+        entity_id: script.oswietlenie_adaptacyjne_uzgodnij
+      data:
+        variables:
+          bulbs: '{{ bulbs }}'
+  - conditions:
+    - condition: trigger
+      id: mode
+    sequence:
+    - variables:
+        old: '{{ trigger.from_state.state if trigger.from_state else '''' }}'
+        new: '{{ trigger.to_state.state if trigger.to_state else '''' }}'
+        room_bulbs: '{{ bulbs | selectattr(''switch'', ''eq'', trigger.entity_id) | list }}'
+    - if:
+      - condition: template
+        value_template: '{{ new == ''off'' }}'
+      then:
       - repeat:
-          for_each: "{{ rooms }}"
+          for_each: '{{ room_bulbs }}'
           sequence:
-            - variables:
-                room: "{{ repeat.item }}"
-                fresh_on: "{{ trigger.id == 'light_on' and trigger.entity_id in repeat.item.lights }}"
-
-            # Auto-resume: włączenie światła w pokoju wstrzymanym
-            - if:
-                - condition: template
-                  value_template: "{{ fresh_on and is_state(room.switch, 'paused') }}"
-              then:
-                - action: input_select.select_option
-                  target:
-                    entity_id: "{{ room.switch }}"
-                  data:
-                    option: "on"
-
-            - if:
-                - condition: template
-                  value_template: "{{ is_state(room.switch, 'on') }}"
-              then:
-                # Żarówka pod zwykłym włącznikiem potrzebuje chwili po podaniu zasilania
-                - if:
-                    - condition: template
-                      value_template: "{{ fresh_on and room.delay_on }}"
-                  then:
-                    - delay: "00:00:01"
-
-                # Po włączeniu światła druga, kontrolna runda po 3 s
-                - repeat:
-                    count: "{{ 2 if fresh_on else 1 }}"
-                    sequence:
-                      - if:
-                          - condition: template
-                            value_template: "{{ repeat.index > 1 }}"
-                        then:
-                          - delay: "00:00:03"
-
-                      - repeat:
-                          for_each: "{{ room.lights | select('is_state', 'on') | list }}"
-                          sequence:
-                            - variables:
-                                k_now: "{{ state_attr(repeat.item, 'color_temp_kelvin') | int(-1) }}"
-                                b_now: "{{ state_attr(repeat.item, 'brightness') | int(-1) }}"
-                                trans: "{{ 1 if trigger.id == 'target' else 0 }}"
-
-                            # Wysyłaj tylko, gdy pokój jest nadal aktywny (ręczna zmiana
-                            # mogła go właśnie wstrzymać) i żarówka odbiega od celu
-                            # (temperatura i jasność osobno – żarówki IKEA nie lubią obu naraz)
-                            - if:
-                                - condition: template
-                                  value_template: "{{ is_state(room.switch, 'on') and (k_now - target_k) | abs >= 30 }}"
-                              then:
-                                - action: light.turn_on
-                                  target:
-                                    entity_id: "{{ repeat.item }}"
-                                  data:
-                                    color_temp_kelvin: "{{ target_k }}"
-                                    transition: "{{ trans }}"
-                                - delay:
-                                    milliseconds: 100
-
-                            - if:
-                                - condition: template
-                                  value_template: "{{ is_state(room.switch, 'on') and (b_now - (target_b * 2.55) | round(0)) | abs >= 3 }}"
-                              then:
-                                - action: light.turn_on
-                                  target:
-                                    entity_id: "{{ repeat.item }}"
-                                  data:
-                                    brightness_pct: "{{ target_b }}"
-                                    transition: "{{ trans }}"
-
+          - variables:
+              bulb: '{{ repeat.item }}'
+          - if:
+            - condition: template
+              value_template: '{{ not bulb.dumb and not is_state(bulb.entity, ''unavailable'') }}'
+            then:
+            - action: mqtt.publish
+              continue_on_error: true
+              data:
+                topic: zigbee2mqtt/{{ bulb.z2m }}/set
+                payload: '{"level_config": {"on_level": "previous"}}'
+            - delay:
+                milliseconds: 150
+          - if:
+            - condition: template
+              value_template: '{{ bulb.dumb and is_state(bulb.entity, ''on'') }}'
+            then:
+            - action: mqtt.publish
+              continue_on_error: true
+              data:
+                topic: zigbee2mqtt/{{ bulb.z2m }}/set
+                payload: '{"color_temp_startup": "previous", "level_config": {"current_level_startup": "previous"}}'
+            - delay:
+                milliseconds: 150
+    - if:
+      - condition: template
+        value_template: '{{ old == ''off'' and new in [''on'', ''paused''] }}'
+      then:
+      - repeat:
+          for_each: '{{ room_bulbs | selectattr(''dumb'') | selectattr(''entity'', ''is_state'', ''on'') | list
+            }}'
+          sequence:
+          - variables:
+              bulb: '{{ repeat.item }}'
+          - action: mqtt.publish
+            continue_on_error: true
+            data:
+              topic: zigbee2mqtt/{{ bulb.z2m }}/set
+              payload: '{"color_temp_startup": 454, "level_config": {"current_level_startup": 64}}'
+          - delay:
+              milliseconds: 150
+    - if:
+      - condition: template
+        value_template: '{{ new == ''on'' }}'
+      then:
+      - action: script.turn_on
+        target:
+          entity_id: script.oswietlenie_adaptacyjne_uzgodnij
+        data:
+          variables:
+            bulbs: '{{ bulbs }}'
+  - conditions:
+    - condition: trigger
+      id:
+      - fresh
+      - announce
+    sequence:
+    - variables:
+        bulb: |-
+          {% if trigger.id == 'announce' %}
+            {% set m = bulbs | selectattr('z2m', 'eq', trigger.payload_json.data.friendly_name | default('')) | list %}
+          {% else %}
+            {% set m = bulbs | selectattr('entity', 'eq', trigger.entity_id) | list %}
+          {% endif %}
+          {{ m[0] if m else none }}
+    - condition: template
+      value_template: '{{ bulb is mapping }}'
+    - condition: template
+      value_template: |-
+        {{ trigger.id != 'announce'
+           or (not is_state(bulb.entity, 'unavailable')
+               and (not is_state(bulb.entity, 'on')
+                    or (now() - states[bulb.entity].last_changed).total_seconds() > 5)) }}
+    - variables:
+        physical: |-
+          {{ trigger.id == 'announce'
+             or (trigger.to_state.context.user_id is none
+                 and trigger.to_state.context.parent_id is none) }}
+    - if:
+      - condition: template
+        value_template: '{{ physical and is_state(bulb.switch, ''paused'') }}'
+      then:
+      - action: input_select.select_option
+        target:
+          entity_id: '{{ bulb.switch }}'
+        data:
+          option: 'on'
+    - action: script.turn_on
+      target:
+        entity_id: script.oswietlenie_adaptacyjne_swieza_zarowka
+      data:
+        variables:
+          bulb: '{{ bulb }}'
+          force_on: '{{ trigger.id == ''announce'' }}'
+  - conditions:
+    - condition: trigger
+      id: 'off'
+    sequence:
+    - delay:
+        seconds: 3
+    - variables:
+        bulb: |-
+          {% if trigger.id == 'announce' %}
+            {% set m = bulbs | selectattr('z2m', 'eq', trigger.payload_json.data.friendly_name | default('')) | list %}
+          {% else %}
+            {% set m = bulbs | selectattr('entity', 'eq', trigger.entity_id) | list %}
+          {% endif %}
+          {{ m[0] if m else none }}
+    - condition: template
+      value_template: |-
+        {{ bulb is mapping and is_state(bulb.switch, 'paused')
+           and bulbs | selectattr('switch', 'eq', bulb.switch)
+                     | map(attribute='entity') | select('is_state', 'on')
+                     | list | count == 0 }}
+    - action: input_select.select_option
+      target:
+        entity_id: '{{ bulb.switch }}'
+      data:
+        option: 'on'
 mode: parallel
-max: 25
+max: 30
+variables:
+  bulbs:
+  - entity: light.sypialnia
+    z2m: sypialnia
+    dumb: false
+    switch: input_select.oswietlenie_adaptacyjne_sypialnia
+  - entity: light.salon_kanapa_stol
+    z2m: salon_kanapa_stol
+    dumb: true
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.salon_kanapa_srodek
+    z2m: salon_kanapa_srodek
+    dumb: true
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.salon_kanapa_sciana
+    z2m: salon_kanapa_sciana
+    dumb: true
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.salon_srodek_okno
+    z2m: salon_srodek_okno
+    dumb: false
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.salon_srodek_wejscie
+    z2m: salon_srodek_wejscie
+    dumb: false
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.lazienka
+    z2m: lazienka
+    dumb: true
+    switch: input_select.oswietlenie_adaptacyjne_lazienka
+  - entity: light.korytarz
+    z2m: korytarz
+    dumb: true
+    switch: input_select.oswietlenie_adaptacyjne_korytarz
+  - entity: light.maly_pokoj
+    z2m: maly_pokoj
+    dumb: true
+    switch: input_select.oswietlenie_adaptacyjne_maly_pokoj
+  - entity: light.kuchnia_wejscie
+    z2m: kuchnia_wejscie
+    dumb: true
+    switch: input_select.oswietlenie_adaptacyjne_kuchnia
 trace:
-  stored_traces: 20
+  stored_traces: 30

@@ -1,0 +1,105 @@
+# ═══════════════════════════════════════════════════════════════
+# Oświetlenie adaptacyjne – świeżo zapalona żarówka
+# HA: script.oswietlenie_adaptacyjne_swieza_zarowka
+# ═══════════════════════════════════════════════════════════════
+#
+# Elementy systemu (każdy w osobnym pliku):
+#   automatyzacja_adaptive_lighting_wielopokojowa.yaml              – sterowanie
+#   automatyzacja_adaptive_lighting_wykrywanie_recznych_zmian.yaml  – pauza po ręcznej zmianie
+#   skrypt_adaptive_lighting_uzgodnij.yaml                          – dopasowanie wszystkich żarówek
+#   skrypt_adaptive_lighting_swieza_zarowka.yaml                    – dopasowanie świeżo zapalonej żarówki
+#   sensor_zadana_jasnosc.jinja, sensor_zadana_temperatura.jinja    – zadane wartości (pomocnicy template)
+#
+# Lista żarówek (bulbs) jest w obu automatyzacjach – musi być zgodna.
+#   entity – encja światła          switch – input_select pokoju (on/off/paused)
+#   z2m    – friendly_name w Z2M    dumb   – żarówka pod zwykłym (niesmart) wyłącznikiem
+#
+# Wywoływany przez 'sterowanie' po zapaleniu żarówki (zmiana stanu albo
+# device_announce z Z2M po podaniu zasilania) z parametrami bulb i force_on.
+#
+# ═══════════════════════════════════════════════════════════════
+
+alias: 'Oświetlenie adaptacyjne: świeżo zapalona żarówka'
+description: 'Ustawia zadaną barwę i jasność żarówce, która właśnie się zapaliła (na zwykłych wyłącznikach bezwarunkowo,
+  na smart switchach tylko gdy odbiega) (po 1 s i ponownie po 3 s). Żarówkom na zwykłych wyłącznikach zapisuje ustawienia
+  startowe zależne od trybu pokoju. Wywoływany przez automatyzację ''Oświetlenie adaptacyjne: sterowanie''.'
+mode: parallel
+max: 20
+icon: mdi:lightbulb-on-outline
+fields:
+  bulb:
+    description: Żarówka (element listy bulbs)
+    required: true
+  force_on:
+    description: Żarówka na pewno świeci, nawet jeśli HA uważa ją za zgaszoną (po device_announce)
+    default: false
+sequence:
+- delay:
+    seconds: 1
+- repeat:
+    count: 2
+    sequence:
+    - if:
+      - condition: template
+        value_template: '{{ repeat.index > 1 }}'
+      then:
+      - delay:
+          seconds: 3
+    - variables:
+        tb: '{{ states(''sensor.zadana_jasnosc_swiatla'') | int(0) }}'
+        tk: '{{ states(''sensor.zadana_temperatura_swiatla'') | int(0) }}'
+        k_now: '{{ state_attr(bulb.entity, ''color_temp_kelvin'') | int(-1) }}'
+        b_now: '{{ state_attr(bulb.entity, ''brightness'') | int(-1) }}'
+    - if:
+      - condition: template
+        value_template: |-
+          {{ is_state(bulb.switch, 'on') and tb > 0 and tk > 0
+             and (is_state(bulb.entity, 'on')
+                  or (force_on and repeat.index == 1
+                      and not is_state(bulb.entity, 'unavailable'))) }}
+      then:
+      - if:
+        - condition: template
+          value_template: '{{ bulb.dumb or (k_now - tk) | abs >= 30 }}'
+        then:
+        - action: light.turn_on
+          continue_on_error: true
+          target:
+            entity_id: '{{ bulb.entity }}'
+          data:
+            color_temp_kelvin: '{{ tk }}'
+            transition: 0
+        - delay:
+            milliseconds: 150
+      - if:
+        - condition: template
+          value_template: '{{ bulb.dumb or (b_now - (tb * 2.55) | round(0)) | abs >= 3 }}'
+        then:
+        - action: light.turn_on
+          continue_on_error: true
+          target:
+            entity_id: '{{ bulb.entity }}'
+          data:
+            brightness_pct: '{{ tb }}'
+            transition: 1
+- if:
+  - condition: template
+    value_template: '{{ bulb.dumb }}'
+  then:
+  - delay:
+      milliseconds: 1500
+  - if:
+    - condition: template
+      value_template: '{{ is_state(bulb.switch, ''off'') }}'
+    then:
+    - action: mqtt.publish
+      continue_on_error: true
+      data:
+        topic: zigbee2mqtt/{{ bulb.z2m }}/set
+        payload: '{"color_temp_startup": "previous", "level_config": {"current_level_startup": "previous"}}'
+    else:
+    - action: mqtt.publish
+      continue_on_error: true
+      data:
+        topic: zigbee2mqtt/{{ bulb.z2m }}/set
+        payload: '{"color_temp_startup": 454, "level_config": {"current_level_startup": 64}}'

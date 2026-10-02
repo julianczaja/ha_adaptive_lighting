@@ -1,0 +1,101 @@
+# ═══════════════════════════════════════════════════════════════
+# Oświetlenie adaptacyjne – wykrywanie ręcznych zmian
+# HA: automation.oswietlenie_adaptacyjne_wykrywanie_recznych_zmian (id 1790900000001)
+# ═══════════════════════════════════════════════════════════════
+#
+# Elementy systemu (każdy w osobnym pliku):
+#   automatyzacja_adaptive_lighting_wielopokojowa.yaml              – sterowanie
+#   automatyzacja_adaptive_lighting_wykrywanie_recznych_zmian.yaml  – pauza po ręcznej zmianie
+#   skrypt_adaptive_lighting_uzgodnij.yaml                          – dopasowanie wszystkich żarówek
+#   skrypt_adaptive_lighting_swieza_zarowka.yaml                    – dopasowanie świeżo zapalonej żarówki
+#   sensor_zadana_jasnosc.jinja, sensor_zadana_temperatura.jinja    – zadane wartości (pomocnicy template)
+#
+# Lista żarówek (bulbs) jest w obu automatyzacjach – musi być zgodna.
+#   entity – encja światła          switch – input_select pokoju (on/off/paused)
+#   z2m    – friendly_name w Z2M    dumb   – żarówka pod zwykłym (niesmart) wyłącznikiem
+#
+# Reaguje na wywołania light.turn_on (UI, aplikacja, głos, sceny, inne
+# automatyzacje) z jasnością lub barwą odbiegającą od zadanej i wstrzymuje
+# pokoje, których żarówki były celem. Skrypty oświetlenia adaptacyjnego
+# zawsze wysyłają wartości zadane, więc nie wywołują pauzy.
+#
+# ═══════════════════════════════════════════════════════════════
+
+alias: 'Oświetlenie adaptacyjne: wykrywanie ręcznych zmian'
+description: Pauzuje pokój, gdy ktoś (UI, aplikacja, głos, scena, inna automatyzacja) wywoła light.turn_on z jasnością
+  lub barwą różną od zadanej. Własne polecenia skryptów oświetlenia adaptacyjnego zawsze mają wartości zadane, więc
+  nie pauzują. Lista żarówek (bulbs) musi być zgodna z listą w automatyzacji 'sterowanie'.
+triggers:
+- trigger: event
+  event_type: call_service
+  event_data:
+    domain: light
+    service: turn_on
+conditions:
+- condition: template
+  value_template: '{{ rooms | count > 0 }}'
+- condition: template
+  value_template: |-
+    {% set sd = trigger.event.data.service_data %}
+    {% set tb = states('sensor.zadana_jasnosc_swiatla') | float(-100) %}
+    {% set tk = states('sensor.zadana_temperatura_swiatla') | float(-10000) %}
+    {% set strong = ['brightness_step', 'brightness_step_pct', 'xy_color', 'hs_color', 'rgb_color',
+                     'rgbw_color', 'rgbww_color', 'color_name', 'white'] %}
+    {% set b = sd.brightness_pct if 'brightness_pct' in sd
+          else ((sd.brightness | float(0)) / 2.55 if 'brightness' in sd else none) %}
+    {% set k = sd.color_temp_kelvin if 'color_temp_kelvin' in sd
+          else (sd.kelvin if 'kelvin' in sd
+          else (1000000 / (sd.color_temp | float(1)) if 'color_temp' in sd else none)) %}
+    {{ strong | select('in', sd) | list | count > 0
+       or (b is not none and (b | float(0) - tb) | abs > 4)
+       or (k is not none and (k | float(0) - tk) | abs > 100) }}
+actions:
+- action: input_select.select_option
+  target:
+    entity_id: '{{ rooms }}'
+  data:
+    option: paused
+mode: parallel
+max: 50
+variables:
+  bulbs:
+  - entity: light.sypialnia
+    switch: input_select.oswietlenie_adaptacyjne_sypialnia
+  - entity: light.salon_kanapa_stol
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.salon_kanapa_srodek
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.salon_kanapa_sciana
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.salon_srodek_okno
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.salon_srodek_wejscie
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.lazienka
+    switch: input_select.oswietlenie_adaptacyjne_lazienka
+  - entity: light.korytarz
+    switch: input_select.oswietlenie_adaptacyjne_korytarz
+  - entity: light.maly_pokoj
+    switch: input_select.oswietlenie_adaptacyjne_maly_pokoj
+  - entity: light.kuchnia_wejscie
+    switch: input_select.oswietlenie_adaptacyjne_kuchnia
+  targets: |-
+    {% set sd = trigger.event.data.service_data %}
+    {% set ns = namespace(e=[]) %}
+    {% for key in ['entity_id', 'device_id', 'area_id', 'floor_id', 'label_id'] %}
+      {% set v = sd.get(key) %}
+      {% for x in ([v] if v is string else (v or [])) %}
+        {% if key == 'entity_id' %}{% set ns.e = ns.e + [x] %}
+        {% elif key == 'device_id' %}{% set ns.e = ns.e + device_entities(x) %}
+        {% elif key == 'area_id' %}{% set ns.e = ns.e + area_entities(x) %}
+        {% elif key == 'floor_id' %}{% for a in floor_areas(x) %}{% set ns.e = ns.e + area_entities(a) %}{% endfor %}
+        {% elif key == 'label_id' %}{% set ns.e = ns.e + label_entities(x) %}{% endif %}
+      {% endfor %}
+    {% endfor %}
+    {% set all_lights = bulbs | map(attribute='entity') | list %}
+    {{ all_lights if 'all' in ns.e else ns.e | select('in', all_lights) | unique | list }}
+  rooms: |-
+    {{ bulbs | selectattr('entity', 'in', targets) | map(attribute='switch')
+             | unique | select('is_state', 'on') | list }}
+trace:
+  stored_traces: 20
