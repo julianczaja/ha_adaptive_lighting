@@ -22,10 +22,12 @@
 #
 # Stany przełącznika pokoju:
 #   on     – adaptacja aktywna
-#   off    – adaptacja wyłączona (żarówki na zwykłych wyłącznikach startują
-#            z ostatnimi ustawieniami)
+#   off    – adaptacja wyłączona
 #   paused – wstrzymana (ręczna zmiana); zdejmuje ją zgaszenie wszystkich
 #            świateł w pokoju albo użycie fizycznego wyłącznika
+#
+# Żarówki na zwykłych wyłącznikach zawsze startują 'jak ostatnio' (ustawia to
+# skrypt 'świeżo zapalona żarówka'), czyli z ostatnią zadaną barwą i jasnością.
 #
 # ═══════════════════════════════════════════════════════════════
 
@@ -122,7 +124,6 @@ actions:
       id: mode
     sequence:
     - variables:
-        old: '{{ trigger.from_state.state if trigger.from_state else '''' }}'
         new: '{{ trigger.to_state.state if trigger.to_state else '''' }}'
         room_bulbs: '{{ bulbs | selectattr(''switch'', ''eq'', trigger.entity_id) | list }}'
     - if:
@@ -130,47 +131,14 @@ actions:
         value_template: '{{ new == ''off'' }}'
       then:
       - repeat:
-          for_each: '{{ room_bulbs }}'
+          for_each: '{{ room_bulbs | rejectattr(''dumb'') | rejectattr(''entity'', ''is_state'', ''unavailable'')
+            | list }}'
           sequence:
-          - variables:
-              bulb: '{{ repeat.item }}'
-          - if:
-            - condition: template
-              value_template: '{{ not bulb.dumb and not is_state(bulb.entity, ''unavailable'') }}'
-            then:
-            - action: mqtt.publish
-              continue_on_error: true
-              data:
-                topic: zigbee2mqtt/{{ bulb.z2m }}/set
-                payload: '{"level_config": {"on_level": "previous"}}'
-            - delay:
-                milliseconds: 150
-          - if:
-            - condition: template
-              value_template: '{{ bulb.dumb and is_state(bulb.entity, ''on'') }}'
-            then:
-            - action: mqtt.publish
-              continue_on_error: true
-              data:
-                topic: zigbee2mqtt/{{ bulb.z2m }}/set
-                payload: '{"color_temp_startup": "previous", "level_config": {"current_level_startup": "previous"}}'
-            - delay:
-                milliseconds: 150
-    - if:
-      - condition: template
-        value_template: '{{ old == ''off'' and new in [''on'', ''paused''] }}'
-      then:
-      - repeat:
-          for_each: '{{ room_bulbs | selectattr(''dumb'') | selectattr(''entity'', ''is_state'', ''on'') | list
-            }}'
-          sequence:
-          - variables:
-              bulb: '{{ repeat.item }}'
           - action: mqtt.publish
             continue_on_error: true
             data:
-              topic: zigbee2mqtt/{{ bulb.z2m }}/set
-              payload: '{"color_temp_startup": 454, "level_config": {"current_level_startup": 64}}'
+              topic: zigbee2mqtt/{{ repeat.item.z2m }}/set
+              payload: '{"level_config": {"on_level": "previous"}}'
           - delay:
               milliseconds: 150
     - if:

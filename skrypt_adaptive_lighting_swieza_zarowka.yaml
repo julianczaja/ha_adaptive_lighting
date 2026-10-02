@@ -17,12 +17,17 @@
 # Wywoływany przez 'sterowanie' po zapaleniu żarówki (zmiana stanu albo
 # device_announce z Z2M po podaniu zasilania) z parametrami bulb i force_on.
 #
+# Żarówki na zwykłych wyłącznikach mają ustawienia startowe 'jak ostatnio'
+# (previous). Świecąca żarówka jest stale trzymana przy zadanych wartościach,
+# więc po podaniu zasilania od razu startuje z ostatnią zadaną barwą i jasnością,
+# a skrypt tylko koryguje różnicę, która narosła od jej zgaszenia.
+#
 # ═══════════════════════════════════════════════════════════════
 
 alias: 'Oświetlenie adaptacyjne: świeżo zapalona żarówka'
 description: 'Ustawia zadaną barwę i jasność żarówce, która właśnie się zapaliła (na zwykłych wyłącznikach bezwarunkowo,
-  na smart switchach tylko gdy odbiega) (po 1 s i ponownie po 3 s). Żarówkom na zwykłych wyłącznikach zapisuje ustawienia
-  startowe zależne od trybu pokoju. Wywoływany przez automatyzację ''Oświetlenie adaptacyjne: sterowanie''.'
+  na smart switchach tylko gdy odbiega) (po 0,5 s i ponownie po 3 s). Żarówkom na zwykłych wyłącznikach zapisuje ustawienia
+  startowe ''jak ostatnio''. Wywoływany przez automatyzację ''Oświetlenie adaptacyjne: sterowanie''.'
 mode: parallel
 max: 20
 icon: mdi:lightbulb-on-outline
@@ -35,7 +40,7 @@ fields:
     default: false
 sequence:
 - delay:
-    seconds: 1
+    milliseconds: 500
 - repeat:
     count: 2
     sequence:
@@ -81,25 +86,15 @@ sequence:
             entity_id: '{{ bulb.entity }}'
           data:
             brightness_pct: '{{ tb }}'
-            transition: 1
+            transition: 0.5
 - if:
   - condition: template
     value_template: '{{ bulb.dumb }}'
   then:
   - delay:
       milliseconds: 1500
-  - if:
-    - condition: template
-      value_template: '{{ is_state(bulb.switch, ''off'') }}'
-    then:
-    - action: mqtt.publish
-      continue_on_error: true
-      data:
-        topic: zigbee2mqtt/{{ bulb.z2m }}/set
-        payload: '{"color_temp_startup": "previous", "level_config": {"current_level_startup": "previous"}}'
-    else:
-    - action: mqtt.publish
-      continue_on_error: true
-      data:
-        topic: zigbee2mqtt/{{ bulb.z2m }}/set
-        payload: '{"color_temp_startup": 454, "level_config": {"current_level_startup": 64}}'
+  - action: mqtt.publish
+    continue_on_error: true
+    data:
+      topic: zigbee2mqtt/{{ bulb.z2m }}/set
+      payload: '{"color_temp_startup": "previous", "level_config": {"current_level_startup": "previous"}}'

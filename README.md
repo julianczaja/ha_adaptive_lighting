@@ -34,8 +34,8 @@ Automatyzacja **sterowanie** reaguje na kilka zdarzeń:
 | Zdarzenie | Co robi |
 |---|---|
 | zmiana zadanych wartości, co 5 min, start HA | skrypt **uzgodnij** ustawia zadane wartości świecącym żarówkom w aktywnych pokojach. Zgaszonym żarówkom na stałym zasilaniu zapisuje poziom startowy, żeby zapaliły się od razu z właściwym światłem |
-| zapalenie żarówki (zmiana stanu albo `device_announce` z Z2M po podaniu zasilania) | skrypt **świeżo zapalona żarówka** dopasowuje ją po 1 s i ponownie po 3 s |
-| zmiana trybu pokoju | przy włączeniu od razu dopasowuje światło. Przy wyłączeniu przywraca żarówkom ustawienia startowe „jak ostatnio” |
+| zapalenie żarówki (zmiana stanu albo `device_announce` z Z2M po podaniu zasilania) | skrypt **świeżo zapalona żarówka** dopasowuje ją po 0,5 s i ponownie po 3 s |
+| zmiana trybu pokoju | przy włączeniu od razu dopasowuje światło. Przy wyłączeniu przywraca żarówkom na smart switchach poziom włączenia „jak ostatnio” |
 | zgaszenie wszystkich świateł w pokoju | zdejmuje pauzę |
 
 Polecenia są wysyłane tylko wtedy, gdy żarówka odbiega od celu: o co najmniej 30 K albo 3/255 jasności.
@@ -57,10 +57,17 @@ Pauzę zdejmuje zgaszenie wszystkich świateł w pokoju albo użycie fizycznego 
 
 ### Żarówki pod zwykłymi wyłącznikami
 
-Żarówka zasilana przez zwykły wyłącznik po włączeniu startuje z zapisanymi ustawieniami
-startowymi. Gdy adaptacja jest aktywna, startuje ciepło i przyciemniona, a po chwili dostaje
-zadane wartości, więc nie ma błysku zimnego, jasnego światła. Gdy adaptacja jest wyłączona,
-startuje tak, jak świeciła ostatnio. Takie żarówki są oznaczone na liście `bulbs` jako `dumb: true`.
+Żarówka zasilana przez zwykły wyłącznik nie odbiera poleceń, dopóki jest bez prądu, więc po
+włączeniu startuje z zapisanymi w niej ustawieniami startowymi. Są one ustawione na „jak ostatnio”
+(`previous`). Gdy żarówka świeci, automatyka stale trzyma ją przy zadanych wartościach, dlatego
+po ponownym włączeniu od razu świeci tak, jak zadano w chwili jej zgaszenia. Skrypt
+**świeżo zapalona żarówka** koryguje tylko różnicę, która narosła od tamtej pory.
+
+Zwykle ta różnica jest niewielka. Duża zdarza się wtedy, gdy żarówka była długo zgaszona,
+a krzywa w tym czasie mocno się zmieniła, np. ostatnio świeciła po południu, a zapalasz ją w nocy.
+Wtedy przez 1–2 s świeci jasno i neutralnie, zanim przyjdzie korekta.
+
+Takie żarówki są oznaczone na liście `bulbs` jako `dumb: true`.
 
 ## Pliki
 
