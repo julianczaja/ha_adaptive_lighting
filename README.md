@@ -33,10 +33,10 @@ Automatyzacja **sterowanie** reaguje na kilka zdarzeń:
 
 | Zdarzenie | Co robi |
 |---|---|
-| zmiana zadanych wartości, co 5 min, start HA | skrypt **uzgodnij** ustawia zadane wartości świecącym żarówkom w aktywnych pokojach. Zgaszonym żarówkom na stałym zasilaniu zapisuje poziom startowy, żeby zapaliły się od razu z właściwym światłem |
+| zmiana zadanych wartości, co 5 min, start HA (po 30 s) | skrypt **uzgodnij** ustawia zadane wartości świecącym żarówkom w pokojach w trybie `on`. Zgaszonym żarówkom na smart switchach zapisuje barwę i poziom włączenia (`on_level`), żeby zapaliły się od razu z właściwym światłem |
 | zapalenie żarówki (zmiana stanu albo `device_announce` z Z2M po podaniu zasilania) | skrypt **świeżo zapalona żarówka** dopasowuje ją po 0,5 s i ponownie po 3 s |
-| zmiana trybu pokoju | przy włączeniu od razu dopasowuje światło. Przy wyłączeniu przywraca żarówkom na smart switchach poziom włączenia „jak ostatnio” |
-| zgaszenie wszystkich świateł w pokoju | zdejmuje pauzę |
+| zmiana trybu pokoju | przy przełączeniu na `on` od razu dopasowuje światło. Przy przełączeniu na `off` przywraca żarówkom na smart switchach poziom włączenia „jak ostatnio” |
+| zgaszenie wszystkich świateł w pokoju | po 3 s zdejmuje pauzę, jeśli żadna żarówka w pokoju już nie świeci |
 
 Polecenia są wysyłane tylko wtedy, gdy żarówka odbiega od celu: o co najmniej 30 K albo 3/255 jasności.
 
@@ -69,6 +69,21 @@ Wtedy przez 1–2 s świeci jasno i neutralnie, zanim przyjdzie korekta.
 
 Takie żarówki są oznaczone na liście `bulbs` jako `dumb: true`.
 
+Żarówki na stałym zasilaniu (`dumb: false`) są sterowane przez SONOFF ZBMINIR2 z bindingiem
+Zigbee, więc słuchają poleceń także wtedy, gdy są zgaszone.
+
+### Obecna instalacja
+
+| Pokój | Żarówki | Zasilanie |
+|---|---|---|
+| sypialnia | `light.sypialnia` | smart switch |
+| salon | `light.salon_srodek_okno`, `light.salon_srodek_wejscie` | smart switch |
+| salon | `light.salon_kanapa_stol`, `light.salon_kanapa_srodek`, `light.salon_kanapa_sciana` | zwykły wyłącznik |
+| łazienka | `light.lazienka` | zwykły wyłącznik |
+| korytarz | `light.korytarz` | zwykły wyłącznik |
+| mały pokój | `light.maly_pokoj` | zwykły wyłącznik |
+| kuchnia | `light.kuchnia_wejscie` | zwykły wyłącznik |
+
 ## Pliki
 
 | Plik | Element w Home Assistant |
@@ -81,6 +96,10 @@ Takie żarówki są oznaczone na liście `bulbs` jako `dumb: true`.
 | `sensor_zadana_temperatura.jinja` | szablon pomocnika `sensor.zadana_temperatura_swiatla` |
 | `index.html`, `konfigurator.js`, `konfigurator.css` | konfigurator krzywych (GitHub Pages) |
 | `automatyzacja_adaptive_lighting.yaml` | pierwsza, jednopokojowa wersja – nieużywana, zostawiona dla historii |
+
+Źródłem prawdy jest konfiguracja w Home Assistant. Pliki YAML to jej eksport: po każdej
+zmianie w HA skopiuj YAML z edytora automatyzacji lub skryptu do odpowiedniego pliku
+i zrób commit.
 
 ## Instalacja
 
