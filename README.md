@@ -106,11 +106,24 @@ Zigbee, więc słuchają poleceń także wtedy, gdy są zgaszone.
 | `sensor_zadana_jasnosc.jinja` | szablon pomocnika `sensor.zadana_jasnosc_swiatla` |
 | `sensor_zadana_temperatura.jinja` | szablon pomocnika `sensor.zadana_temperatura_swiatla` |
 | `index.html`, `konfigurator.js`, `konfigurator.css` | konfigurator krzywych (GitHub Pages) |
-| `automatyzacja_adaptive_lighting.yaml` | pierwsza, jednopokojowa wersja – nieużywana, zostawiona dla historii |
+| `sync_ha.py` | synchronizacja plików repo z HA |
 
-Źródłem prawdy jest konfiguracja w Home Assistant. Pliki YAML to jej eksport: po każdej
-zmianie w HA skopiuj YAML z edytora automatyzacji lub skryptu do odpowiedniego pliku
-i zrób commit.
+Źródłem prawdy jest konfiguracja w Home Assistant, a pliki w repo są jej eksportem.
+Skrypt `sync_ha.py` porównuje je z HA i przenosi zmiany w obie strony:
+
+```sh
+python3 sync_ha.py                 # porównanie repo z HA, nic nie zmienia
+python3 sync_ha.py pull            # zapis stanu z HA do plików, potem git diff i commit
+python3 sync_ha.py push jasnosc    # wysłanie pliku do HA, po potwierdzeniu
+```
+
+Elementy to `sterowanie`, `wykrywanie`, `uzgodnij`, `swieza_zarowka`, `jasnosc`
+i `temperatura`. Bez nazw polecenie dotyczy wszystkich. Porównanie sprawdza też,
+czy listy `bulbs` w obu automatyzacjach są zgodne. Nagłówki z komentarzami w plikach YAML
+zostają przy `pull` bez zmian.
+
+Skrypt potrzebuje PyYAML i tokenu dostępu. Token czyta ze zmiennej `HA_TOKEN`
+albo z pliku `~/.config/ha/token`. Adres HA można zmienić zmienną `HA_URL`.
 
 ## Instalacja
 
