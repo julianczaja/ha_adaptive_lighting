@@ -131,8 +131,8 @@
           <div class="field-head"><span class="field-name">Wschód</span></div>
           <div class="field-ctrl">
             <input type="text" class="time" id="sunrise" value="06:00" inputmode="numeric" maxlength="5" autocomplete="off" spellcheck="false" title="Godzina wschodu (z lokalizacji, można zmienić). Strzałki: ±1 min, z Shiftem ±10 min">
-            <input type="range" id="sunrise_offset" value="0" min="-120" max="120" step="5" title="Przesunięcie wschodu ±2 h">
-            <span class="hint offset-val" id="sr_offset_label">0 min</span>
+            <input type="range" id="sunrise_offset" value="0" min="-360" max="360" step="5" title="Przesunięcie wschodu ±6 h">
+            <div class="num offset-num"><input type="number" id="sunrise_offset_val" value="0" min="-360" max="360" step="5" title="Przesunięcie wschodu w minutach (±360)"><span>min</span></div>
             <span class="effective" id="sr_effective"></span>
           </div>
         </div>
@@ -140,8 +140,8 @@
           <div class="field-head"><span class="field-name">Zachód</span></div>
           <div class="field-ctrl">
             <input type="text" class="time" id="sunset" value="20:00" inputmode="numeric" maxlength="5" autocomplete="off" spellcheck="false" title="Godzina zachodu (z lokalizacji, można zmienić). Strzałki: ±1 min, z Shiftem ±10 min">
-            <input type="range" id="sunset_offset" value="0" min="-120" max="120" step="5" title="Przesunięcie zachodu ±2 h">
-            <span class="hint offset-val" id="ss_offset_label">0 min</span>
+            <input type="range" id="sunset_offset" value="0" min="-360" max="360" step="5" title="Przesunięcie zachodu ±6 h">
+            <div class="num offset-num"><input type="number" id="sunset_offset_val" value="0" min="-360" max="360" step="5" title="Przesunięcie zachodu w minutach (±360)"><span>min</span></div>
             <span class="effective" id="ss_effective"></span>
           </div>
         </div>

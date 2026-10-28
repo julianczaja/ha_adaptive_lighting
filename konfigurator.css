@@ -165,8 +165,8 @@ input[type="range"]::-moz-range-thumb {
 
 /* Ustawienia słońca tuż nad pasmem – zmiana offsetu widoczna od razu */
 .sun-row {
-  display: grid; grid-template-columns: repeat(3, auto); justify-content: space-between;
-  gap: 12px 32px; margin: 4px 0 12px;
+  display: flex; flex-wrap: wrap; justify-content: space-between;
+  gap: 12px 24px; margin: 4px 0 12px;
 }
 .field-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
 .field-ctrl { display: flex; align-items: center; gap: 10px; min-height: 34px; }
@@ -176,9 +176,10 @@ input[type="range"]::-moz-range-thumb {
 .sun-field input.time { width: 64px; }
 .sun-field input[type="range"] { width: 92px; --thumb: var(--muted); }
 /* Stałe szerokości – zmiana offsetu nie przesuwa pól w rzędzie */
-.offset-val { width: 66px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.num.offset-num input { width: 56px; }
+.num.offset-num span { width: auto; }
 .effective {
-  width: 84px; white-space: nowrap;
+  width: 100px; white-space: nowrap;
   font: 600 0.95rem var(--font-num); font-variant-numeric: tabular-nums;
   color: var(--faint);
 }

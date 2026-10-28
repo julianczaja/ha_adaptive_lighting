@@ -144,7 +144,7 @@ Konfigurator to statyczna strona do strojenia krzywych jasności i barwy:
 
 - podgląd przebiegu doby z symulacją koloru i jasności światła oraz dwoma wykresami,
 - godziny wschodu i zachodu liczone dla podanej lokalizacji (algorytm NOAA, tak jak w HA)
-  i przesunięcia do ±2 h,
+  i przesunięcia do ±6 h (suwak albo dokładna wartość w minutach),
 - godziny poszczególnych faz i aktualne wartości,
 - gotowe szablony Jinja do skopiowania.
 

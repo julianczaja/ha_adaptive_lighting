@@ -431,11 +431,11 @@ function render() {
 
   ['sunrise', 'sunset'].forEach((k) => {
     const off = offsetMin(k + '_offset');
-    const label = $(k === 'sunrise' ? 'sr_offset_label' : 'ss_offset_label');
-    label.textContent = (off > 0 ? '+' : '') + off + ' min';
     // Zawsze widoczne (stała szerokość) – inaczej pojawienie się napisu przesuwa sąsiednie pola
     const eff = $(k === 'sunrise' ? 'sr_effective' : 'ss_effective');
-    eff.textContent = 'czyli ' + hhmm(k === 'sunrise' ? sunriseH() : sunsetH());
+    const h = k === 'sunrise' ? sunriseH() : sunsetH();
+    eff.textContent = 'czyli ' + hhmm(h) + (h >= 24 ? ' +1 d' : h < 0 ? ' −1 d' : '');
+    eff.title = h >= 24 || h < 0 ? 'Przesunięty czas wypada w innej dobie' : '';
     eff.classList.toggle('is-shifted', off !== 0);
   });
 
@@ -532,7 +532,18 @@ paramDefs.forEach(([sid, vid]) => {
   });
 });
 
-['sunrise_offset', 'sunset_offset'].forEach((id) => $(id).addEventListener('input', scheduleRender));
+// Offset: suwak do szybkiej zmiany, pole liczbowe do dokładnej wartości
+['sunrise_offset', 'sunset_offset'].forEach((id) => {
+  const s = $(id), v = $(id + '_val');
+  s.addEventListener('input', () => { v.value = s.value; scheduleRender(); });
+  v.addEventListener('input', () => {
+    const n = Number(v.value);
+    if (v.value === '' || !Number.isFinite(n)) return;
+    s.value = Math.max(Number(s.min), Math.min(Number(s.max), Math.round(n)));
+    scheduleRender();
+  });
+  v.addEventListener('change', () => { v.value = s.value; scheduleRender(); });
+});
 
 // Pola godzin wschodu/zachodu (24 h, własne zamiast <input type="time">,
 // którego format zależy od ustawień regionalnych przeglądarki)
@@ -580,8 +591,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
 
 $('btnReset').addEventListener('click', () => {
   paramDefs.forEach(([sid, vid, , def]) => { $(sid).value = def; $(vid).value = def; });
-  $('sunrise_offset').value = '0';
-  $('sunset_offset').value = '0';
+  ['sunrise_offset', 'sunset_offset'].forEach((id) => { $(id).value = '0'; $(id + '_val').value = '0'; });
   updateSunFromLocation(LOC_STATUS[locSource]);
   scheduleRender();
 });
