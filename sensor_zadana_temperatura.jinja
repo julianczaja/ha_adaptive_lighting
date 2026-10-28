@@ -3,9 +3,10 @@
 {% set max_t = 4000 %}
 {% set dawn_dur = 30 * 60 %}
 {% set dusk_dur = 90 * 60 %}
-{% set dusk_offset = 30 * 60 %}
-{% set sr_offset_min = -30 %}
-{% set ss_offset_min = 250 %}
+{# rozjaśnianie od wschodu, ale nie później niż dawn_latest #}
+{% set dawn_latest = '07:00' %}
+{# ściemnianie od zachodu, ale nie wcześniej niż dusk_earliest #}
+{% set dusk_earliest = '20:00' %}
 
 {# --- STABILNA LOGIKA CZASU --- #}
 {% set now_dt = now() %}
@@ -18,23 +19,22 @@
 {% if nr is not none and ns is not none %}
   {% set sr_dt = nr if nr.date() == today else nr - timedelta(days=1) %}
   {% set ss_dt = ns if ns.date() == today else ns - timedelta(days=1) %}
-  {% set sr = as_timestamp(sr_dt) + (sr_offset_min * 60) %}
-  {% set ss = as_timestamp(ss_dt) + (ss_offset_min * 60) %}
+  {% set sr = [as_timestamp(sr_dt), as_timestamp(today_at(dawn_latest))] | min %}
+  {% set ss = [as_timestamp(ss_dt), as_timestamp(today_at(dusk_earliest))] | max %}
 
   {% set dawn_end = sr + dawn_dur %}
-  {% set dusk_start = ss - dusk_offset %}
-  {% set dusk_end = dusk_start + dusk_dur %}
+  {% set dusk_end = ss + dusk_dur %}
 
   {% if now_ts < sr %}
     {{ min_t }}
-  {% elif now_ts <= dawn_end %}
+  {% elif now_ts <= dawn_end and dawn_dur > 0 %}
     {% set progress = (now_ts - sr) / dawn_dur %}
     {% set eased = (3 - 2 * progress) * progress * progress %}
     {{ (min_t + (max_t - min_t) * eased) | int }}
-  {% elif now_ts < dusk_start %}
+  {% elif now_ts < ss %}
     {{ max_t }}
-  {% elif now_ts <= dusk_end %}
-    {% set progress = (now_ts - dusk_start) / dusk_dur %}
+  {% elif now_ts <= dusk_end and dusk_dur > 0 %}
+    {% set progress = (now_ts - ss) / dusk_dur %}
     {% set eased = (3 - 2 * progress) * progress * progress %}
     {{ (max_t - (max_t - min_t) * eased) | int }}
   {% else %}

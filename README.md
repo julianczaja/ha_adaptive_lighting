@@ -16,13 +16,24 @@ także tych podłączonych pod zwykłe (niesmart) wyłączniki ścienne.
 ### Zadane wartości
 
 Dwa pomocniki typu template liczą, jaka jasność (%) i temperatura barwowa (K)
-powinny być w danej chwili. Bazują na godzinach wschodu i zachodu z `sun.sun`,
-z opcjonalnym przesunięciem. Przejścia między nocą a dniem są płynne (funkcja smoothstep).
+powinny być w danej chwili. Bazują na godzinach wschodu i zachodu z `sun.sun`.
+Przejścia między nocą a dniem są płynne (funkcja smoothstep).
 
 | Pomocnik | Wartość |
 |---|---|
 | `sensor.zadana_jasnosc_swiatla` | jasność w %, od `min_b` w nocy do `max_b` w dzień |
 | `sensor.zadana_temperatura_swiatla` | barwa w K, od `min_t` w nocy do `max_t` w dzień |
+
+Każdy pomocnik ma cztery własne parametry: wartość nocną, wartość dzienną, czas przejścia
+rano (`dawn_dur`) i czas przejścia wieczorem (`dusk_dur`). Dwie godziny graniczne są wspólne:
+
+| Parametr | Znaczenie |
+|---|---|
+| `dawn_latest` | rozjaśnianie zaczyna się o wschodzie, ale nie później niż o tej godzinie |
+| `dusk_earliest` | ściemnianie zaczyna się o zachodzie, ale nie wcześniej niż o tej godzinie |
+
+Przy `dusk_earliest = '20:00'` ściemnianie startuje zimą o 20:00, a latem o zachodzie.
+Godzina `00:00` w `dusk_earliest` albo `23:59` w `dawn_latest` wyłącza daną granicę.
 
 Parametry krzywych najwygodniej dobrać w konfiguratorze. Wygenerowany kod wkleja się
 do pomocników bez zmian.
@@ -143,8 +154,9 @@ Po zmianie `friendly_name` urządzenia w Zigbee2MQTT zaktualizuj pole `z2m`.
 Konfigurator to statyczna strona do strojenia krzywych jasności i barwy:
 
 - podgląd przebiegu doby z symulacją koloru i jasności światła oraz dwoma wykresami,
-- godziny wschodu i zachodu liczone dla podanej lokalizacji (algorytm NOAA, tak jak w HA)
-  i przesunięcia do ±6 h (suwak albo dokładna wartość w minutach),
+- godziny wschodu i zachodu liczone dla podanej lokalizacji i wybranego dnia
+  (algorytm NOAA, tak jak w HA), więc łatwo sprawdzić zimę i lato,
+- godziny graniczne `dawn_latest` i `dusk_earliest`,
 - godziny poszczególnych faz i aktualne wartości,
 - gotowe szablony Jinja do skopiowania.
 

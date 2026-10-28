@@ -10,14 +10,14 @@ const paramDefs = [
   ['min_b', 'min_b_val', 'min_b', 20],
   ['max_b', 'max_b_val', 'max_b', 100],
   ['dawn_min_b', 'dawn_min_b_val', 'dawn_min_b', 60],
-  ['dusk_min_b', 'dusk_min_b_val', 'dusk_min_b', 80],
-  ['dusk_offset_b', 'dusk_offset_b_val', 'dusk_offset_b', 40],
+  ['dusk_min_b', 'dusk_min_b_val', 'dusk_min_b', 130],
   ['min_t', 'min_t_val', 'min_t', 2200],
   ['max_t', 'max_t_val', 'max_t', 4000],
   ['dawn_min_t', 'dawn_min_t_val', 'dawn_min_t', 30],
-  ['dusk_offset_t', 'dusk_offset_t_val', 'dusk_offset_t', 45],
-  ['dusk_min_t', 'dusk_min_t_val', 'dusk_min_t', 60],
+  ['dusk_min_t', 'dusk_min_t_val', 'dusk_min_t', 90],
 ];
+// Granice wspólne dla obu kanałów: rano najpóźniej, wieczorem najwcześniej
+const LIMIT_DEFAULTS = { dawn_latest: '07:00', dusk_earliest: '20:00' };
 const params = {};
 
 const DEFAULT_LOCATION = { lat: 53.1235, lng: 18.0084, name: 'Bydgoszcz' };
@@ -51,30 +51,29 @@ function nowHours() {
   return d.getHours() + d.getMinutes() / 60;
 }
 
-const offsetMin = (id) => Number($(id).value) || 0;
-const sunriseH = () => timeToHours($('sunrise').value, 6) + offsetMin('sunrise_offset') / 60;
-const sunsetH = () => timeToHours($('sunset').value, 20) + offsetMin('sunset_offset') / 60;
+// Początek rozjaśniania: wschód, ale nie później niż dawn_latest.
+// Początek ściemniania: zachód, ale nie wcześniej niż dusk_earliest.
+const sunriseH = () => Math.min(timeToHours($('sunrise').value, 6), timeToHours($('dawn_latest').value, 24));
+const sunsetH = () => Math.max(timeToHours($('sunset').value, 20), timeToHours($('dusk_earliest').value, 0));
 
 // ── Krzywe (ta sama logika i kolejność warunków co w Jinja) ──
 const smoothstep = (x) => (3 - 2 * x) * x * x;
 
 function channels(p) {
   const sr = sunriseH(), ss = sunsetH();
-  const tDuskStart = ss - p.dusk_offset_t / 60;
+  // Oba kanały: przejście zaczyna się w punkcie startu i trwa dawn_dur / dusk_dur
   return {
     b: {
       lo: p.min_b, hi: p.max_b,
       rise: [sr, sr + p.dawn_min_b / 60],
-      // jasność: od dusk_offset przed zachodem do dusk_dur po zachodzie
-      fall: [ss - p.dusk_offset_b / 60, ss + p.dusk_min_b / 60],
+      fall: [ss, ss + p.dusk_min_b / 60],
       names: ['Rozjaśnianie', 'Ściemnianie'],
       unit: ' %',
     },
     t: {
       lo: p.min_t, hi: p.max_t,
       rise: [sr, sr + p.dawn_min_t / 60],
-      // temperatura: start dusk_offset przed zachodem, trwa dusk_dur
-      fall: [tDuskStart, tDuskStart + p.dusk_min_t / 60],
+      fall: [ss, ss + p.dusk_min_t / 60],
       names: ['Ochładzanie', 'Ocieplanie'],
       unit: ' K',
     },
@@ -287,7 +286,7 @@ function renderStrip(ch, nowH) {
   $('lightStrip').style.background = `linear-gradient(90deg, ${stops.join(', ')})`;
   $('stripNow').style.left = `${(nowH / 24) * 100}%`;
 
-  [['mkSunrise', sunriseH(), 'wschód'], ['mkSunset', sunsetH(), 'zachód']].forEach(([id, h, word]) => {
+  [['mkSunrise', sunriseH(), 'rano'], ['mkSunset', sunsetH(), 'wieczór']].forEach(([id, h, word]) => {
     const visible = h > 0 && h < 24;
     const pos = `${(h / 24) * 100}%`;
     $(id).style.display = visible ? '' : 'none';
@@ -323,19 +322,18 @@ function renderNow(ch, nowH) {
 }
 
 // ── Kod Jinja (treść identyczna z szablonami używanymi w HA) ──
-function generateCode() {
+function jinjaTemplate(title, lo, hi, v) {
   const p = params;
-  const sro = $('sunrise_offset').value || '0';
-  const sso = $('sunset_offset').value || '0';
-
-  $('codeB').textContent = `{# --- KONFIGURACJA JASNOŚCI --- #}
-{% set min_b = ${p.min_b} %}
-{% set max_b = ${p.max_b} %}
-{% set dawn_dur = ${p.dawn_min_b} * 60 %}
-{% set dusk_dur = ${p.dusk_min_b} * 60 %}
-{% set dusk_offset = ${p.dusk_offset_b} * 60 %}
-{% set sr_offset_min = ${sro} %}
-{% set ss_offset_min = ${sso} %}
+  const limits = (id) => hhmm(timeToHours($(id).value, id === 'dawn_latest' ? 24 : 0));
+  return `{# --- KONFIGURACJA ${title} --- #}
+{% set ${lo} = ${p[lo]} %}
+{% set ${hi} = ${p[hi]} %}
+{% set dawn_dur = ${p['dawn_min_' + v]} * 60 %}
+{% set dusk_dur = ${p['dusk_min_' + v]} * 60 %}
+{# rozjaśnianie od wschodu, ale nie później niż dawn_latest #}
+{% set dawn_latest = '${limits('dawn_latest')}' %}
+{# ściemnianie od zachodu, ale nie wcześniej niż dusk_earliest #}
+{% set dusk_earliest = '${limits('dusk_earliest')}' %}
 
 {# --- STABILNA LOGIKA CZASU --- #}
 {% set now_dt = now() %}
@@ -348,78 +346,35 @@ function generateCode() {
 {% if nr is not none and ns is not none %}
   {% set sr_dt = nr if nr.date() == today else nr - timedelta(days=1) %}
   {% set ss_dt = ns if ns.date() == today else ns - timedelta(days=1) %}
-  {% set sr = as_timestamp(sr_dt) + (sr_offset_min * 60) %}
-  {% set ss = as_timestamp(ss_dt) + (ss_offset_min * 60) %}
+  {% set sr = [as_timestamp(sr_dt), as_timestamp(today_at(dawn_latest))] | min %}
+  {% set ss = [as_timestamp(ss_dt), as_timestamp(today_at(dusk_earliest))] | max %}
 
   {% set dawn_end = sr + dawn_dur %}
-  {% set dusk_start = ss - dusk_offset %}
   {% set dusk_end = ss + dusk_dur %}
-  {% set total_dusk = dusk_offset + dusk_dur %}
 
   {% if now_ts < sr %}
-    {{ min_b }}
-  {% elif now_ts <= dawn_end %}
+    {{ ${lo} }}
+  {% elif now_ts <= dawn_end and dawn_dur > 0 %}
     {% set progress = (now_ts - sr) / dawn_dur %}
     {% set eased = (3 - 2 * progress) * progress * progress %}
-    {{ (min_b + (max_b - min_b) * eased) | int }}
-  {% elif now_ts < dusk_start %}
-    {{ max_b }}
-  {% elif now_ts <= dusk_end %}
-    {% set progress = (now_ts - dusk_start) / total_dusk %}
+    {{ (${lo} + (${hi} - ${lo}) * eased) | int }}
+  {% elif now_ts < ss %}
+    {{ ${hi} }}
+  {% elif now_ts <= dusk_end and dusk_dur > 0 %}
+    {% set progress = (now_ts - ss) / dusk_dur %}
     {% set eased = (3 - 2 * progress) * progress * progress %}
-    {{ (max_b - (max_b - min_b) * eased) | int }}
+    {{ (${hi} - (${hi} - ${lo}) * eased) | int }}
   {% else %}
-    {{ min_b }}
+    {{ ${lo} }}
   {% endif %}
 {% else %}
-  {{ min_b }}
+  {{ ${lo} }}
 {% endif %}`;
+}
 
-  $('codeT').textContent = `{# --- KONFIGURACJA TEMPERATURY BARWOWEJ --- #}
-{% set min_t = ${p.min_t} %}
-{% set max_t = ${p.max_t} %}
-{% set dawn_dur = ${p.dawn_min_t} * 60 %}
-{% set dusk_dur = ${p.dusk_min_t} * 60 %}
-{% set dusk_offset = ${p.dusk_offset_t} * 60 %}
-{% set sr_offset_min = ${sro} %}
-{% set ss_offset_min = ${sso} %}
-
-{# --- STABILNA LOGIKA CZASU --- #}
-{% set now_dt = now() %}
-{% set now_ts = as_timestamp(now_dt) %}
-{% set today = now_dt.date() %}
-
-{% set nr = as_datetime(state_attr('sun.sun', 'next_rising')) | as_local %}
-{% set ns = as_datetime(state_attr('sun.sun', 'next_setting')) | as_local %}
-
-{% if nr is not none and ns is not none %}
-  {% set sr_dt = nr if nr.date() == today else nr - timedelta(days=1) %}
-  {% set ss_dt = ns if ns.date() == today else ns - timedelta(days=1) %}
-  {% set sr = as_timestamp(sr_dt) + (sr_offset_min * 60) %}
-  {% set ss = as_timestamp(ss_dt) + (ss_offset_min * 60) %}
-
-  {% set dawn_end = sr + dawn_dur %}
-  {% set dusk_start = ss - dusk_offset %}
-  {% set dusk_end = dusk_start + dusk_dur %}
-
-  {% if now_ts < sr %}
-    {{ min_t }}
-  {% elif now_ts <= dawn_end %}
-    {% set progress = (now_ts - sr) / dawn_dur %}
-    {% set eased = (3 - 2 * progress) * progress * progress %}
-    {{ (min_t + (max_t - min_t) * eased) | int }}
-  {% elif now_ts < dusk_start %}
-    {{ max_t }}
-  {% elif now_ts <= dusk_end %}
-    {% set progress = (now_ts - dusk_start) / dusk_dur %}
-    {% set eased = (3 - 2 * progress) * progress * progress %}
-    {{ (max_t - (max_t - min_t) * eased) | int }}
-  {% else %}
-    {{ min_t }}
-  {% endif %}
-{% else %}
-  {{ min_t }}
-{% endif %}`;
+function generateCode() {
+  $('codeB').textContent = jinjaTemplate('JASNOŚCI', 'min_b', 'max_b', 'b');
+  $('codeT').textContent = jinjaTemplate('TEMPERATURY BARWOWEJ', 'min_t', 'max_t', 't');
 }
 
 // ── Render ──────────────────────────────────────────────
@@ -429,14 +384,11 @@ function render() {
   const tk = tokens();
   const nowH = nowHours();
 
-  ['sunrise', 'sunset'].forEach((k) => {
-    const off = offsetMin(k + '_offset');
-    // Zawsze widoczne (stała szerokość) – inaczej pojawienie się napisu przesuwa sąsiednie pola
-    const eff = $(k === 'sunrise' ? 'sr_effective' : 'ss_effective');
-    const h = k === 'sunrise' ? sunriseH() : sunsetH();
-    eff.textContent = 'czyli ' + hhmm(h) + (h >= 24 ? ' +1 d' : h < 0 ? ' −1 d' : '');
-    eff.title = h >= 24 || h < 0 ? 'Przesunięty czas wypada w innej dobie' : '';
-    eff.classList.toggle('is-shifted', off !== 0);
+  // Zawsze widoczne (stała szerokość) – inaczej pojawienie się napisu przesuwa sąsiednie pola
+  [['sunrise', 'sr_effective', sunriseH()], ['sunset', 'ss_effective', sunsetH()]].forEach(([k, id, h]) => {
+    const eff = $(id);
+    eff.textContent = 'start ' + hhmm(h);
+    eff.classList.toggle('is-shifted', Math.abs(h - timeToHours($(k).value, h)) > 1e-6);
   });
 
   renderPhases($('phasesB'), ch.b);
@@ -462,13 +414,22 @@ const LOC_STATUS = {
   manual: 'wpisana ręcznie',
 };
 
+// Dzień podglądu (domyślnie dziś) – godziny słońca liczone dla tej daty
+function selectedDate() {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec($('day').value);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], 12) : new Date();
+}
+function isoDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function updateSunFromLocation(status) {
   const lat = Number($('lat').value), lng = Number($('lng').value);
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
     $('locStatus').textContent = 'nieprawidłowe współrzędne';
     return;
   }
-  const t = sunTimes(lat, lng, new Date());
+  const t = sunTimes(lat, lng, selectedDate());
   if (t.sunrise === null || t.sunset === null) {
     $('locStatus').textContent = 'tego dnia słońce nie wschodzi lub nie zachodzi';
     return;
@@ -532,18 +493,7 @@ paramDefs.forEach(([sid, vid]) => {
   });
 });
 
-// Offset: suwak do szybkiej zmiany, pole liczbowe do dokładnej wartości
-['sunrise_offset', 'sunset_offset'].forEach((id) => {
-  const s = $(id), v = $(id + '_val');
-  s.addEventListener('input', () => { v.value = s.value; scheduleRender(); });
-  v.addEventListener('input', () => {
-    const n = Number(v.value);
-    if (v.value === '' || !Number.isFinite(n)) return;
-    s.value = Math.max(Number(s.min), Math.min(Number(s.max), Math.round(n)));
-    scheduleRender();
-  });
-  v.addEventListener('change', () => { v.value = s.value; scheduleRender(); });
-});
+$('day').addEventListener('change', () => updateSunFromLocation(LOC_STATUS[locSource]));
 
 // Pola godzin wschodu/zachodu (24 h, własne zamiast <input type="time">,
 // którego format zależy od ustawień regionalnych przeglądarki)
@@ -553,7 +503,7 @@ function setTimeField(id, h) {
   el.dataset.valid = el.value;
   el.classList.remove('invalid');
 }
-['sunrise', 'sunset'].forEach((id) => {
+['sunrise', 'sunset', 'dawn_latest', 'dusk_earliest'].forEach((id) => {
   const el = $(id);
   el.dataset.valid = el.value;
   el.addEventListener('input', () => {
@@ -591,7 +541,8 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
 
 $('btnReset').addEventListener('click', () => {
   paramDefs.forEach(([sid, vid, , def]) => { $(sid).value = def; $(vid).value = def; });
-  ['sunrise_offset', 'sunset_offset'].forEach((id) => { $(id).value = '0'; $(id + '_val').value = '0'; });
+  Object.entries(LIMIT_DEFAULTS).forEach(([id, v]) => setTimeField(id, parseTime(v)));
+  $('day').value = isoDate(new Date());
   updateSunFromLocation(LOC_STATUS[locSource]);
   scheduleRender();
 });
@@ -623,6 +574,7 @@ setInterval(render, 60000);
 
 // ── Start ───────────────────────────────────────────────
 renderScale();
+$('day').value = isoDate(new Date());
 applyTheme(document.documentElement.dataset.theme);
 setLocation(DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lng, 'default');
 locate();

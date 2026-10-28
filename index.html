@@ -58,14 +58,9 @@
             <div class="num"><input type="number" id="dawn_min_b_val" min="0" max="240" value="60"><span>min</span></div>
           </div>
           <div class="param">
-            <label class="param-label" for="dusk_min_b">Czas ściemniania po zachodzie <code>dusk_dur</code></label>
-            <input type="range" id="dusk_min_b" min="0" max="240" value="80" step="1">
-            <div class="num"><input type="number" id="dusk_min_b_val" min="0" max="240" value="80"><span>min</span></div>
-          </div>
-          <div class="param">
-            <label class="param-label" for="dusk_offset_b">Początek ściemniania przed zachodem <code>dusk_offset</code></label>
-            <input type="range" id="dusk_offset_b" min="0" max="240" value="40" step="1">
-            <div class="num"><input type="number" id="dusk_offset_b_val" min="0" max="240" value="40"><span>min</span></div>
+            <label class="param-label" for="dusk_min_b">Czas ściemniania <code>dusk_dur</code></label>
+            <input type="range" id="dusk_min_b" min="0" max="240" value="130" step="1">
+            <div class="num"><input type="number" id="dusk_min_b_val" min="0" max="240" value="130"><span>min</span></div>
           </div>
         </div>
 
@@ -96,14 +91,9 @@
             <div class="num"><input type="number" id="dawn_min_t_val" min="0" max="240" value="30"><span>min</span></div>
           </div>
           <div class="param">
-            <label class="param-label" for="dusk_offset_t">Początek ocieplania przed zachodem <code>dusk_offset</code></label>
-            <input type="range" id="dusk_offset_t" min="0" max="240" value="45" step="1">
-            <div class="num"><input type="number" id="dusk_offset_t_val" min="0" max="240" value="45"><span>min</span></div>
-          </div>
-          <div class="param">
-            <label class="param-label" for="dusk_min_t">Czas trwania ocieplania <code>dusk_dur</code></label>
-            <input type="range" id="dusk_min_t" min="0" max="240" value="60" step="1">
-            <div class="num"><input type="number" id="dusk_min_t_val" min="0" max="240" value="60"><span>min</span></div>
+            <label class="param-label" for="dusk_min_t">Czas ocieplania barwy <code>dusk_dur</code></label>
+            <input type="range" id="dusk_min_t" min="0" max="240" value="90" step="1">
+            <div class="num"><input type="number" id="dusk_min_t_val" min="0" max="240" value="90"><span>min</span></div>
           </div>
         </div>
 
@@ -125,23 +115,24 @@
             <label class="coord">szer. <input type="number" id="lat" step="0.0001" min="-90" max="90"></label>
             <label class="coord">dł. <input type="number" id="lng" step="0.0001" min="-180" max="180"></label>
             <button class="btn btn-sm" id="btnLocate" title="Pobierz położenie z przeglądarki">Wykryj</button>
+            <input type="date" id="day" title="Dzień podglądu – godziny wschodu i zachodu liczone dla tej daty">
           </div>
         </div>
         <div class="sun-field">
-          <div class="field-head"><span class="field-name">Wschód</span></div>
+          <div class="field-head"><span class="field-name">Rano</span></div>
           <div class="field-ctrl">
             <input type="text" class="time" id="sunrise" value="06:00" inputmode="numeric" maxlength="5" autocomplete="off" spellcheck="false" title="Godzina wschodu (z lokalizacji, można zmienić). Strzałki: ±1 min, z Shiftem ±10 min">
-            <input type="range" id="sunrise_offset" value="0" min="-360" max="360" step="5" title="Przesunięcie wschodu ±6 h">
-            <div class="num offset-num"><input type="number" id="sunrise_offset_val" value="0" min="-360" max="360" step="5" title="Przesunięcie wschodu w minutach (±360)"><span>min</span></div>
+            <span class="hint">najpóźniej</span>
+            <input type="text" class="time" id="dawn_latest" value="07:00" inputmode="numeric" maxlength="5" autocomplete="off" spellcheck="false" title="Rozjaśnianie zaczyna się o wschodzie, ale nie później niż o tej godzinie. 23:59 = zawsze o wschodzie">
             <span class="effective" id="sr_effective"></span>
           </div>
         </div>
         <div class="sun-field">
-          <div class="field-head"><span class="field-name">Zachód</span></div>
+          <div class="field-head"><span class="field-name">Wieczór</span></div>
           <div class="field-ctrl">
             <input type="text" class="time" id="sunset" value="20:00" inputmode="numeric" maxlength="5" autocomplete="off" spellcheck="false" title="Godzina zachodu (z lokalizacji, można zmienić). Strzałki: ±1 min, z Shiftem ±10 min">
-            <input type="range" id="sunset_offset" value="0" min="-360" max="360" step="5" title="Przesunięcie zachodu ±6 h">
-            <div class="num offset-num"><input type="number" id="sunset_offset_val" value="0" min="-360" max="360" step="5" title="Przesunięcie zachodu w minutach (±360)"><span>min</span></div>
+            <span class="hint">najwcześniej</span>
+            <input type="text" class="time" id="dusk_earliest" value="20:00" inputmode="numeric" maxlength="5" autocomplete="off" spellcheck="false" title="Ściemnianie zaczyna się o zachodzie, ale nie wcześniej niż o tej godzinie. 00:00 = zawsze o zachodzie">
             <span class="effective" id="ss_effective"></span>
           </div>
         </div>
