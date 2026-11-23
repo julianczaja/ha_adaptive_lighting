@@ -136,6 +136,16 @@ actions:
               payload: '{"level_config": {"on_level": "previous"}}'
           - delay:
               milliseconds: 150
+      - repeat:
+          for_each: '{{ room_bulbs | selectattr(''dumb'') | selectattr(''entity'', ''is_state'', ''on'') | list }}'
+          sequence:
+          - action: mqtt.publish
+            continue_on_error: true
+            data:
+              topic: zigbee2mqtt/{{ repeat.item.z2m }}/set
+              payload: '{"color_temp_startup": "previous", "level_config": {"current_level_startup": "previous"}}'
+          - delay:
+              milliseconds: 150
     - if:
       - condition: template
         value_template: '{{ new == ''on'' }}'
@@ -247,7 +257,8 @@ actions:
       id: noon
     sequence:
     - repeat:
-        for_each: '{{ bulbs | selectattr(''dumb'') | selectattr(''entity'', ''is_state'', ''on'') | list }}'
+        for_each: '{{ bulbs | selectattr(''dumb'') | selectattr(''entity'', ''is_state'', ''on'')
+          | rejectattr(''switch'', ''is_state'', ''off'') | list }}'
         sequence:
         - action: mqtt.publish
           continue_on_error: true

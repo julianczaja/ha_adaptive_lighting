@@ -22,7 +22,9 @@
 #   zapalona przed 12:00 – 'jak ostatnio' (previous): krzywa rośnie albo stoi,
 #     więc po ponownym włączeniu żarówka startuje z ostatnią zadaną barwą i jasnością;
 #   zapalona od 12:00 – minimum krzywej (2200 K, 20%): krzywa już tylko spada,
-#     więc wieczorem i w nocy żarówka nie błyska jasno i zimno.
+#     więc wieczorem i w nocy żarówka nie błyska jasno i zimno;
+#   pokój z adaptacją wyłączoną (off) – zawsze 'jak ostatnio', bo nikt potem
+#     nie podniesie jasności z minimum (błąd z 2026-11-23, Mały pokój).
 # Żarówkom, które świecą w południe, 'sterowanie' przestawia start na minimum o 12:00.
 #
 # ═══════════════════════════════════════════════════════════════
@@ -30,7 +32,7 @@
 alias: 'Oświetlenie adaptacyjne: dopasuj zapaloną żarówkę'
 description: 'Ustawia zadaną barwę i jasność żarówce, która właśnie się zapaliła (na zwykłych wyłącznikach bezwarunkowo,
   na smart switchach tylko gdy odbiega) (po 0,5 s i ponownie po 3 s). Żarówkom na zwykłych wyłącznikach zapisuje ustawienia
-  startowe: przed 12:00 ''jak ostatnio'', od 12:00 minimum krzywej. Wywoływany przez automatyzację ''Oświetlenie adaptacyjne: sterowanie''.'
+  startowe: przed 12:00 i w pokojach z adaptacją wyłączoną ''jak ostatnio'', od 12:00 minimum krzywej. Wywoływany przez automatyzację ''Oświetlenie adaptacyjne: sterowanie''.'
 mode: parallel
 max: 20
 icon: mdi:lightbulb-on-outline
@@ -101,7 +103,7 @@ sequence:
     data:
       topic: zigbee2mqtt/{{ bulb.z2m }}/set
       payload: |-
-        {% if now().hour < 12 %}
+        {% if now().hour < 12 or is_state(bulb.switch, 'off') %}
           {"color_temp_startup": "previous", "level_config": {"current_level_startup": "previous"}}
         {% else %}
           {"color_temp_startup": 454, "level_config": {"current_level_startup": 51}}
