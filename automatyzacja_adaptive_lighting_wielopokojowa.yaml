@@ -25,18 +25,20 @@
 #   on     – adaptacja aktywna
 #   off    – adaptacja wyłączona
 #   paused – wstrzymana (ręczna zmiana); zdejmuje ją zgaszenie wszystkich
-#            świateł w pokoju albo użycie fizycznego wyłącznika
+#            świateł w pokoju (od razu przez użytkownika, po 3 s przez
+#            automatyzację lub scenę) albo użycie fizycznego wyłącznika
 #
 # Żarówki na zwykłych wyłącznikach startują 'jak ostatnio', jeśli zapalono je
 # przed 12:00, a od 12:00 z minimum krzywej (ustawia to skrypt 'dopasuj zapaloną
 # żarówkę'; świecącym w południe trigger 'noon').
 #
 # Pełne światło: input_boolean.oswietlenie_pelne_swiatlo (trigger 'full').
-#   on  – migawka świateł i trybów pokoi (scene.create), pokoje 'on' → 'paused',
-#         wszystkie dostępne żarówki 100% / 4000 K; żarówka zapalona w tym czasie
-#         też dostaje pełne światło
-#   off – przywraca światła, po 1 s tryby pokoi (pokoje 'on' same się dopasują).
-#         Po restarcie HA migawki nie ma: wtedy tylko zdejmuje pauzy.
+#   on  – migawka trybów pokoi i każdej zapalonej żarówki (scene.create),
+#         pokoje 'on' → 'paused', zapalone żarówki 100% / 4000 K; zgaszonych nie
+#         zapala, ale żarówka zapalona w tym czasie też dostaje pełne światło
+#   off – przywraca tryby pokoi (pokoje 'on' same się dopasują), a w pokojach
+#         wstrzymanych i wyłączonych przywraca zapalonym żarówkom stan z migawki.
+#         Po restarcie HA migawek nie ma: wtedy tylko zdejmuje pauzy.
 #
 # ═══════════════════════════════════════════════════════════════
 
@@ -45,9 +47,9 @@ description: Steruje oświetleniem adaptacyjnym przy zdarzeniach. Każdy pokój 
   żarówki (zmiana stanu lub device_announce z Z2M po podaniu zasilania) uruchamia skrypt 'dopasuj zapaloną żarówkę'.
   Pauzę (ustawianą przez automatyzację 'wykrywanie ręcznych zmian') zdejmuje zgaszenie wszystkich świateł w pokoju
   albo użycie fizycznego wyłącznika. O 12:00 przestawia start świecących żarówek na zwykłych wyłącznikach na minimum
-  krzywej. Obsługuje też przełącznik pełnego światła (100%, 4000 K, drugie przełączenie przywraca poprzedni stan).
-  Okresowe dopasowanie jest w 'sterowaniu cyklicznym'. Lista żarówek (bulbs) musi być zgodna z listami w 'sterowaniu
-  cyklicznym' i 'wykrywaniu ręcznych zmian'.
+  krzywej. Obsługuje też przełącznik pełnego światła (zapalone i zapalane potem żarówki dostają 100% i 4000 K, wyłączenie
+  przywraca poprzedni stan). Okresowe dopasowanie jest w 'sterowaniu cyklicznym'. Lista żarówek (bulbs) musi być
+  zgodna z listami w 'sterowaniu cyklicznym' i 'wykrywaniu ręcznych zmian'.
 triggers:
 - trigger: state
   entity_id:
@@ -213,8 +215,6 @@ actions:
     - condition: trigger
       id: 'off'
     sequence:
-    - delay:
-        seconds: 3
     - variables:
         bulb: |-
           {% if trigger.id == 'announce' %}
@@ -223,9 +223,17 @@ actions:
             {% set m = bulbs | selectattr('entity', 'eq', trigger.entity_id) | list %}
           {% endif %}
           {{ m[0] if m else none }}
+        direct: '{{ trigger.to_state.context.parent_id is none }}'
+    - if:
+      - condition: template
+        value_template: '{{ not direct }}'
+      then:
+      - delay:
+          seconds: 3
     - condition: template
       value_template: |-
         {{ bulb is mapping and is_state(bulb.switch, 'paused')
+           and not is_state('input_boolean.oswietlenie_pelne_swiatlo', 'on')
            and bulbs | selectattr('switch', 'eq', bulb.switch)
                      | map(attribute='entity') | select('is_state', 'on')
                      | list | count == 0 }}
@@ -253,20 +261,34 @@ actions:
       id: full
     sequence:
     - variables:
-        lights: '{{ bulbs | map(attribute=''entity'') | reject(''is_state'', ''unavailable'') | list }}'
+        lit: '{{ bulbs | selectattr(''entity'', ''is_state'', ''on'') | list }}'
         switches: '{{ bulbs | map(attribute=''switch'') | unique | list }}'
+        old_scenes: '{{ states.scene | map(attribute=''entity_id'') | select(''match'', ''scene.oswietlenie_przed_pelnym_'')
+          | list }}'
     - if:
       - condition: template
         value_template: '{{ trigger.to_state.state == ''on'' }}'
       then:
-      - action: scene.create
-        data:
-          scene_id: oswietlenie_przed_pelnym_swiatlem
-          snapshot_entities: '{{ lights }}'
+      - if:
+        - condition: template
+          value_template: '{{ old_scenes | count > 0 }}'
+        then:
+        - action: scene.delete
+          continue_on_error: true
+          target:
+            entity_id: '{{ old_scenes }}'
       - action: scene.create
         data:
           scene_id: oswietlenie_tryby_przed_pelnym_swiatlem
           snapshot_entities: '{{ switches }}'
+      - repeat:
+          for_each: '{{ lit }}'
+          sequence:
+          - action: scene.create
+            data:
+              scene_id: oswietlenie_przed_pelnym_{{ repeat.item.z2m }}
+              snapshot_entities:
+              - '{{ repeat.item.entity }}'
       - if:
         - condition: template
           value_template: '{{ switches | select(''is_state'', ''on'') | list | count > 0 }}'
@@ -279,11 +301,11 @@ actions:
         - delay:
             milliseconds: 300
       - condition: template
-        value_template: '{{ lights | count > 0 }}'
+        value_template: '{{ lit | count > 0 }}'
       - action: light.turn_on
         continue_on_error: true
         target:
-          entity_id: '{{ lights }}'
+          entity_id: '{{ lit | map(attribute=''entity'') | list }}'
         data:
           color_temp_kelvin: 4000
           transition: 0
@@ -292,7 +314,7 @@ actions:
       - action: light.turn_on
         continue_on_error: true
         target:
-          entity_id: '{{ lights }}'
+          entity_id: '{{ lit | map(attribute=''entity'') | list }}'
         data:
           brightness_pct: 100
           transition: 0.5
@@ -305,13 +327,25 @@ actions:
         - action: scene.turn_on
           continue_on_error: true
           target:
-            entity_id: scene.oswietlenie_przed_pelnym_swiatlem
+            entity_id: scene.oswietlenie_tryby_przed_pelnym_swiatlem
         - delay:
-            seconds: 1
-        - action: scene.turn_on
+            milliseconds: 500
+        - variables:
+            restore: '{% set ns = namespace(e=[]) %}{% for b in bulbs if is_state(b.entity, ''on'') and not is_state(b.switch,
+              ''on'') and (''scene.oswietlenie_przed_pelnym_'' ~ b.z2m) in old_scenes %}{% set ns.e = ns.e + [''scene.oswietlenie_przed_pelnym_''
+              ~ b.z2m] %}{% endfor %}{{ ns.e }}'
+        - if:
+          - condition: template
+            value_template: '{{ restore | count > 0 }}'
+          then:
+          - action: scene.turn_on
+            continue_on_error: true
+            target:
+              entity_id: '{{ restore }}'
+        - action: scene.delete
           continue_on_error: true
           target:
-            entity_id: scene.oswietlenie_tryby_przed_pelnym_swiatlem
+            entity_id: '{{ old_scenes + [''scene.oswietlenie_tryby_przed_pelnym_swiatlem''] }}'
         else:
         - if:
           - condition: template

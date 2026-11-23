@@ -49,7 +49,7 @@ zdarzeń (zapalenia, pauzy, `device_announce`) nie giną wśród przebiegów okr
 | sterowanie cykliczne | zmiana zadanych wartości, co 5 min, start HA (po 30 s) | skrypt **dopasuj wszystkie żarówki** ustawia zadane wartości świecącym żarówkom w pokojach w trybie `on`. Zgaszonym żarówkom na smart switchach zapisuje barwę i poziom włączenia (`on_level`), żeby zapaliły się od razu z właściwym światłem. Kontrola co 5 min robi ten zapis tylko co 30 min, bo między zmianami celu wartości się nie zmieniają |
 | sterowanie | zapalenie żarówki (zmiana stanu albo `device_announce` z Z2M po podaniu zasilania) | skrypt **dopasuj zapaloną żarówkę** dopasowuje ją po 0,5 s i ponownie po 3 s. Po `device_announce` zapala ją tylko wtedy, gdy jest pod zwykłym wyłącznikiem (żarówka na smart switchu zgłasza się też wtedy, gdy jest zgaszona) |
 | sterowanie | zmiana trybu pokoju | przy przełączeniu na `on` od razu dopasowuje światło. Przy przełączeniu na `off` przywraca żarówkom na smart switchach poziom włączenia „jak ostatnio” |
-| sterowanie | zgaszenie wszystkich świateł w pokoju | po 3 s zdejmuje pauzę, jeśli żadna żarówka w pokoju już nie świeci |
+| sterowanie | zgaszenie wszystkich świateł w pokoju | zdejmuje pauzę: od razu, gdy gasi użytkownik (HA, wyłącznik), więc szybkie ponowne zapalenie wraca do adaptacji; po 3 s, gdy gasi automatyzacja lub scena (np. tryb kino przechodzi chwilowo przez „wszystko zgaszone”). W trybie pełnego światła pauza zostaje |
 | sterowanie | 12:00 | świecącym żarówkom pod zwykłymi wyłącznikami ustawia start z minimum krzywej |
 | sterowanie | przełącznik pełnego światła | patrz niżej |
 
@@ -97,14 +97,16 @@ Zigbee, więc słuchają poleceń także wtedy, gdy są zgaszone.
 
 ### Pełne światło
 
-Przełącznik `input_boolean.oswietlenie_pelne_swiatlo` („Pełne światło”) zapala wszystkie
-dostępne żarówki na 100% i 4000 K (najzimniejsza biel żarówek IKEA). Wcześniej robi migawkę
-świateł i trybów pokoi (`scene.create`) i wstrzymuje pokoje w trybie `on`, żeby adaptacja
-nie przywróciła krzywej. Żarówka zapalona wyłącznikiem w tym czasie też dostaje pełne światło.
+Przełącznik `input_boolean.oswietlenie_pelne_swiatlo` („Pełne światło”) ustawia zapalone
+żarówki na 100% i 4000 K (najzimniejsza biel żarówek IKEA). Zgaszonych nie zapala, ale żarówka
+zapalona, gdy przełącznik jest włączony, też od razu dostaje pełne światło. Przy włączeniu
+automatyka robi migawkę trybów pokoi i każdej zapalonej żarówki (`scene.create`) i wstrzymuje
+pokoje w trybie `on`, żeby adaptacja nie przywróciła krzywej.
 
-Wyłączenie przełącznika przywraca światła z migawki, a po 1 s tryby pokoi. Pokoje wracające
-do `on` same dopasowują się do aktualnej krzywej. Migawka jest tylko w pamięci, więc po
-restarcie HA wyłączenie przełącznika tylko zdejmuje pauzy.
+Wyłączenie przełącznika przywraca tryby pokoi. Pokoje wracające do `on` same dopasowują się
+do aktualnej krzywej, a w pokojach wstrzymanych i wyłączonych zapalone żarówki wracają do stanu
+z migawki. Migawki są tylko w pamięci, więc po restarcie HA wyłączenie przełącznika tylko
+zdejmuje pauzy.
 
 ### Obecna instalacja
 
