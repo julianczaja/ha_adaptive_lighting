@@ -133,6 +133,7 @@ zdejmuje pauzy.
 | `sensor_zadana_temperatura.jinja` | szablon pomocnika `sensor.zadana_temperatura_swiatla` |
 | `index.html`, `konfigurator.js`, `konfigurator.css` | konfigurator krzywych (GitHub Pages) |
 | `sync_ha.py` | synchronizacja plików repo z HA |
+| `docs/adr/` | decyzje architektoniczne (ADR): dlaczego system jest zbudowany tak, a nie inaczej |
 
 Źródłem prawdy jest konfiguracja w Home Assistant, a pliki w repo są jej eksportem.
 Skrypt `sync_ha.py` porównuje je z HA i przenosi zmiany w obie strony:
