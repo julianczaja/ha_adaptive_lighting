@@ -1,34 +1,41 @@
 # ═══════════════════════════════════════════════════════════════
-# Oświetlenie adaptacyjne – uzgodnij
-# HA: script.oswietlenie_adaptacyjne_uzgodnij
+# Oświetlenie adaptacyjne – dopasuj wszystkie żarówki
+# HA: script.oswietlenie_adaptacyjne_dopasuj_wszystkie
 # ═══════════════════════════════════════════════════════════════
 #
 # Elementy systemu (każdy w osobnym pliku):
 #   automatyzacja_adaptive_lighting_wielopokojowa.yaml              – sterowanie
 #   automatyzacja_adaptive_lighting_wykrywanie_recznych_zmian.yaml  – pauza po ręcznej zmianie
-#   skrypt_adaptive_lighting_uzgodnij.yaml                          – dopasowanie wszystkich żarówek
-#   skrypt_adaptive_lighting_swieza_zarowka.yaml                    – dopasowanie świeżo zapalonej żarówki
+#   skrypt_adaptive_lighting_dopasuj_wszystkie.yaml                 – dopasowanie wszystkich żarówek
+#   skrypt_adaptive_lighting_dopasuj_zapalona.yaml                  – dopasowanie właśnie zapalonej żarówki
+#   automatyzacja_adaptive_lighting_cykliczne.yaml                  – sterowanie cykliczne (co 5 min, zmiana celu)
 #   sensor_zadana_jasnosc.jinja, sensor_zadana_temperatura.jinja    – zadane wartości (pomocnicy template)
 #
-# Lista żarówek (bulbs) jest w obu automatyzacjach – musi być zgodna.
+# Lista żarówek (bulbs) jest w trzech automatyzacjach – musi być zgodna.
 #   entity – encja światła          switch – input_select pokoju (on/off/paused)
 #   z2m    – friendly_name w Z2M    dumb   – żarówka pod zwykłym (niesmart) wyłącznikiem
 #
-# Wywoływany przez 'sterowanie' (zmiana zadanych wartości, co 5 min,
-# start HA, włączenie trybu pokoju) z parametrem bulbs.
+# Wywoływany przez 'sterowanie cykliczne' (zmiana zadanych wartości, co 5 min,
+# start HA) i 'sterowanie' (włączenie trybu pokoju) z parametrami bulbs i write_off.
+# write_off: false pomija zapis do zgaszonych żarówek na smart switchach. Kontrola
+# co 5 min wysyła go tylko co 30 min, bo między zmianami celu wartości są te same.
 #
 # ═══════════════════════════════════════════════════════════════
 
-alias: 'Oświetlenie adaptacyjne: uzgodnij'
+alias: 'Oświetlenie adaptacyjne: dopasuj wszystkie żarówki'
 description: 'Ustawia zadaną barwę i jasność wszystkim zapalonym żarówkom w pokojach z trybem ''on'' (tylko gdy
   odbiegają od celu). Zgaszonym żarówkom na smart switchach ustawia barwę i on_level, żeby zapaliły się od razu
-  z właściwym światłem. Wywoływany przez automatyzację ''Oświetlenie adaptacyjne: sterowanie''.'
+  z właściwym światłem (pomija to przy write_off: false). Wywoływany przez automatyzacje ''Oświetlenie adaptacyjne:
+  sterowanie cykliczne'' i ''Oświetlenie adaptacyjne: sterowanie''.'
 mode: restart
 icon: mdi:lightbulb-auto
 fields:
   bulbs:
     description: Lista żarówek (z automatyzacji)
     required: true
+  write_off:
+    description: Zapisz barwę i on_level zgaszonym żarówkom na smart switchach
+    default: true
 sequence:
 - delay:
     milliseconds: 500
@@ -77,8 +84,8 @@ sequence:
               milliseconds: 150
       - conditions:
         - condition: template
-          value_template: '{{ is_state(bulb.entity, ''off'') and not bulb.dumb and is_state(bulb.switch, ''on'')
-            }}'
+          value_template: '{{ write_off | default(true) and is_state(bulb.entity, ''off'') and not bulb.dumb
+            and is_state(bulb.switch, ''on'') }}'
         sequence:
         - action: mqtt.publish
           continue_on_error: true

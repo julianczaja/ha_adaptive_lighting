@@ -1,0 +1,90 @@
+# ═══════════════════════════════════════════════════════════════
+# Oświetlenie adaptacyjne – sterowanie cykliczne
+# HA: automation.oswietlenie_adaptacyjne_sterowanie_cykliczne (id 1795000000201)
+# ═══════════════════════════════════════════════════════════════
+#
+# Zmiana zadanych wartości, kontrola co 5 min i start HA (po 30 s) uruchamiają
+# skrypt 'dopasuj wszystkie żarówki'. Wydzielone z 'sterowania', bo to ok. 560 przebiegów na dobę
+# i wypychały ślady zdarzeń (zapalenia, pauzy, announce).
+#
+# Lista żarówek (bulbs) jest w trzech automatyzacjach – musi być zgodna
+# (sprawdza to sync_ha.py).
+#
+# ═══════════════════════════════════════════════════════════════
+
+alias: 'Oświetlenie adaptacyjne: sterowanie cykliczne'
+description: Zmiana zadanych wartości, kontrola co 5 min i start HA uruchamiają skrypt 'dopasuj wszystkie żarówki'. Zgaszonym żarówkom
+  na smart switchach kontrola co 5 min zapisuje wartości tylko co 30 min. Wydzielona z 'sterowania', żeby częste
+  przebiegi nie wypychały śladów zdarzeń. Lista żarówek (bulbs) musi być zgodna z listą w 'sterowaniu'.
+triggers:
+- trigger: state
+  entity_id:
+  - sensor.zadana_jasnosc_swiatla
+  - sensor.zadana_temperatura_swiatla
+  id: target
+- trigger: time_pattern
+  minutes: /5
+  id: reconcile
+- trigger: homeassistant
+  event: start
+  id: start
+actions:
+- if:
+  - condition: trigger
+    id: start
+  then:
+  - delay:
+      seconds: 30
+- action: script.turn_on
+  target:
+    entity_id: script.oswietlenie_adaptacyjne_dopasuj_wszystkie
+  data:
+    variables:
+      bulbs: '{{ bulbs }}'
+      write_off: '{{ trigger.id != ''reconcile'' or now().minute % 30 == 0 }}'
+mode: queued
+max: 3
+variables:
+  bulbs:
+  - entity: light.sypialnia
+    z2m: sypialnia
+    dumb: false
+    switch: input_select.oswietlenie_adaptacyjne_sypialnia
+  - entity: light.salon_kanapa_stol
+    z2m: salon_kanapa_stol
+    dumb: true
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.salon_kanapa_srodek
+    z2m: salon_kanapa_srodek
+    dumb: true
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.salon_kanapa_sciana
+    z2m: salon_kanapa_sciana
+    dumb: true
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.salon_srodek_okno
+    z2m: salon_srodek_okno
+    dumb: false
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.salon_srodek_wejscie
+    z2m: salon_srodek_wejscie
+    dumb: false
+    switch: input_select.oswietlenie_adaptacyjne_salon
+  - entity: light.lazienka
+    z2m: lazienka
+    dumb: true
+    switch: input_select.oswietlenie_adaptacyjne_lazienka
+  - entity: light.korytarz
+    z2m: korytarz
+    dumb: true
+    switch: input_select.oswietlenie_adaptacyjne_korytarz
+  - entity: light.maly_pokoj
+    z2m: maly_pokoj
+    dumb: true
+    switch: input_select.oswietlenie_adaptacyjne_maly_pokoj
+  - entity: light.kuchnia_wejscie
+    z2m: kuchnia_wejscie
+    dumb: true
+    switch: input_select.oswietlenie_adaptacyjne_kuchnia
+trace:
+  stored_traces: 10

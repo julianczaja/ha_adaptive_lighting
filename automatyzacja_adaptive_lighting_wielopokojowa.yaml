@@ -6,16 +6,17 @@
 # Elementy systemu (każdy w osobnym pliku):
 #   automatyzacja_adaptive_lighting_wielopokojowa.yaml              – sterowanie
 #   automatyzacja_adaptive_lighting_wykrywanie_recznych_zmian.yaml  – pauza po ręcznej zmianie
-#   skrypt_adaptive_lighting_uzgodnij.yaml                          – dopasowanie wszystkich żarówek
-#   skrypt_adaptive_lighting_swieza_zarowka.yaml                    – dopasowanie świeżo zapalonej żarówki
+#   skrypt_adaptive_lighting_dopasuj_wszystkie.yaml                 – dopasowanie wszystkich żarówek
+#   skrypt_adaptive_lighting_dopasuj_zapalona.yaml                  – dopasowanie właśnie zapalonej żarówki
+#   automatyzacja_adaptive_lighting_cykliczne.yaml                  – sterowanie cykliczne (co 5 min, zmiana celu)
 #   sensor_zadana_jasnosc.jinja, sensor_zadana_temperatura.jinja    – zadane wartości (pomocnicy template)
 #
-# Lista żarówek (bulbs) jest w obu automatyzacjach – musi być zgodna.
+# Lista żarówek (bulbs) jest w trzech automatyzacjach – musi być zgodna.
 #   entity – encja światła          switch – input_select pokoju (on/off/paused)
 #   z2m    – friendly_name w Z2M    dumb   – żarówka pod zwykłym (niesmart) wyłącznikiem
 #
 # Jak dodać żarówkę:
-#   1. Dopisz ją do bulbs tutaj i w automatyzacji 'wykrywanie ręcznych zmian'
+#   1. Dopisz ją do bulbs tutaj, w 'sterowaniu cyklicznym' i w 'wykrywaniu ręcznych zmian'
 #   2. Dopisz jej encję do triggerów 'fresh' i 'off' poniżej
 #   Nowy pokój: dodatkowo input_select.oswietlenie_adaptacyjne_NAZWA
 #   (opcje: on / off / paused) w triggerze 'mode'
@@ -26,29 +27,28 @@
 #   paused – wstrzymana (ręczna zmiana); zdejmuje ją zgaszenie wszystkich
 #            świateł w pokoju albo użycie fizycznego wyłącznika
 #
-# Żarówki na zwykłych wyłącznikach zawsze startują 'jak ostatnio' (ustawia to
-# skrypt 'świeżo zapalona żarówka'), czyli z ostatnią zadaną barwą i jasnością.
+# Żarówki na zwykłych wyłącznikach startują 'jak ostatnio', jeśli zapalono je
+# przed 12:00, a od 12:00 z minimum krzywej (ustawia to skrypt 'dopasuj zapaloną
+# żarówkę'; świecącym w południe trigger 'noon').
+#
+# Pełne światło: input_boolean.oswietlenie_pelne_swiatlo (trigger 'full').
+#   on  – migawka świateł i trybów pokoi (scene.create), pokoje 'on' → 'paused',
+#         wszystkie dostępne żarówki 100% / 4000 K; żarówka zapalona w tym czasie
+#         też dostaje pełne światło
+#   off – przywraca światła, po 1 s tryby pokoi (pokoje 'on' same się dopasują).
+#         Po restarcie HA migawki nie ma: wtedy tylko zdejmuje pauzy.
 #
 # ═══════════════════════════════════════════════════════════════
 
 alias: 'Oświetlenie adaptacyjne: sterowanie'
-description: Steruje oświetleniem adaptacyjnym. Każdy pokój ma input_select (on/off/paused). Zmiana zadanych wartości,
-  kontrola co 5 min i start HA uruchamiają skrypt 'uzgodnij'. Zapalenie żarówki (zmiana stanu lub device_announce
-  z Z2M po podaniu zasilania) uruchamia skrypt 'świeżo zapalona żarówka'. Pauzę (ustawianą przez automatyzację 'wykrywanie
-  ręcznych zmian') zdejmuje zgaszenie wszystkich świateł w pokoju albo użycie fizycznego wyłącznika. Lista żarówek
-  (bulbs) musi być zgodna z listą w automatyzacji 'wykrywanie ręcznych zmian'.
+description: Steruje oświetleniem adaptacyjnym przy zdarzeniach. Każdy pokój ma input_select (on/off/paused). Zapalenie
+  żarówki (zmiana stanu lub device_announce z Z2M po podaniu zasilania) uruchamia skrypt 'dopasuj zapaloną żarówkę'.
+  Pauzę (ustawianą przez automatyzację 'wykrywanie ręcznych zmian') zdejmuje zgaszenie wszystkich świateł w pokoju
+  albo użycie fizycznego wyłącznika. O 12:00 przestawia start świecących żarówek na zwykłych wyłącznikach na minimum
+  krzywej. Obsługuje też przełącznik pełnego światła (100%, 4000 K, drugie przełączenie przywraca poprzedni stan).
+  Okresowe dopasowanie jest w 'sterowaniu cyklicznym'. Lista żarówek (bulbs) musi być zgodna z listami w 'sterowaniu
+  cyklicznym' i 'wykrywaniu ręcznych zmian'.
 triggers:
-- trigger: state
-  entity_id:
-  - sensor.zadana_jasnosc_swiatla
-  - sensor.zadana_temperatura_swiatla
-  id: target
-- trigger: time_pattern
-  minutes: /5
-  id: reconcile
-- trigger: homeassistant
-  event: start
-  id: start
 - trigger: state
   entity_id:
   - input_select.oswietlenie_adaptacyjne_korytarz
@@ -98,27 +98,20 @@ triggers:
   - 'off'
   - unavailable
   id: 'off'
+- trigger: time
+  at: '12:00:00'
+  id: noon
+- trigger: state
+  entity_id: input_boolean.oswietlenie_pelne_swiatlo
+  from:
+  - 'on'
+  - 'off'
+  to:
+  - 'on'
+  - 'off'
+  id: full
 actions:
 - choose:
-  - conditions:
-    - condition: trigger
-      id:
-      - target
-      - reconcile
-      - start
-    sequence:
-    - if:
-      - condition: trigger
-        id: start
-      then:
-      - delay:
-          seconds: 30
-    - action: script.turn_on
-      target:
-        entity_id: script.oswietlenie_adaptacyjne_uzgodnij
-      data:
-        variables:
-          bulbs: '{{ bulbs }}'
   - conditions:
     - condition: trigger
       id: mode
@@ -147,7 +140,7 @@ actions:
       then:
       - action: script.turn_on
         target:
-          entity_id: script.oswietlenie_adaptacyjne_uzgodnij
+          entity_id: script.oswietlenie_adaptacyjne_dopasuj_wszystkie
         data:
           variables:
             bulbs: '{{ bulbs }}'
@@ -173,6 +166,28 @@ actions:
            or (not is_state(bulb.entity, 'unavailable')
                and (not is_state(bulb.entity, 'on')
                     or (now() - states[bulb.entity].last_changed).total_seconds() > 5)) }}
+    - if:
+      - condition: template
+        value_template: '{{ is_state(''input_boolean.oswietlenie_pelne_swiatlo'', ''on'') and (trigger.id == ''fresh''
+          or bulb.dumb) }}'
+      then:
+      - action: light.turn_on
+        continue_on_error: true
+        target:
+          entity_id: '{{ bulb.entity }}'
+        data:
+          color_temp_kelvin: 4000
+          transition: 0
+      - delay:
+          milliseconds: 150
+      - action: light.turn_on
+        continue_on_error: true
+        target:
+          entity_id: '{{ bulb.entity }}'
+        data:
+          brightness_pct: 100
+          transition: 0.5
+      - stop: Pełne światło
     - variables:
         physical: |-
           {{ trigger.id == 'announce'
@@ -189,11 +204,11 @@ actions:
           option: 'on'
     - action: script.turn_on
       target:
-        entity_id: script.oswietlenie_adaptacyjne_swieza_zarowka
+        entity_id: script.oswietlenie_adaptacyjne_dopasuj_zapalona
       data:
         variables:
           bulb: '{{ bulb }}'
-          force_on: '{{ trigger.id == ''announce'' }}'
+          force_on: '{{ trigger.id == ''announce'' and bulb.dumb }}'
   - conditions:
     - condition: trigger
       id: 'off'
@@ -219,6 +234,94 @@ actions:
         entity_id: '{{ bulb.switch }}'
       data:
         option: 'on'
+  - conditions:
+    - condition: trigger
+      id: noon
+    sequence:
+    - repeat:
+        for_each: '{{ bulbs | selectattr(''dumb'') | selectattr(''entity'', ''is_state'', ''on'') | list }}'
+        sequence:
+        - action: mqtt.publish
+          continue_on_error: true
+          data:
+            topic: zigbee2mqtt/{{ repeat.item.z2m }}/set
+            payload: '{"color_temp_startup": 454, "level_config": {"current_level_startup": 51}}'
+        - delay:
+            milliseconds: 150
+  - conditions:
+    - condition: trigger
+      id: full
+    sequence:
+    - variables:
+        lights: '{{ bulbs | map(attribute=''entity'') | reject(''is_state'', ''unavailable'') | list }}'
+        switches: '{{ bulbs | map(attribute=''switch'') | unique | list }}'
+    - if:
+      - condition: template
+        value_template: '{{ trigger.to_state.state == ''on'' }}'
+      then:
+      - action: scene.create
+        data:
+          scene_id: oswietlenie_przed_pelnym_swiatlem
+          snapshot_entities: '{{ lights }}'
+      - action: scene.create
+        data:
+          scene_id: oswietlenie_tryby_przed_pelnym_swiatlem
+          snapshot_entities: '{{ switches }}'
+      - if:
+        - condition: template
+          value_template: '{{ switches | select(''is_state'', ''on'') | list | count > 0 }}'
+        then:
+        - action: input_select.select_option
+          target:
+            entity_id: '{{ switches | select(''is_state'', ''on'') | list }}'
+          data:
+            option: paused
+        - delay:
+            milliseconds: 300
+      - condition: template
+        value_template: '{{ lights | count > 0 }}'
+      - action: light.turn_on
+        continue_on_error: true
+        target:
+          entity_id: '{{ lights }}'
+        data:
+          color_temp_kelvin: 4000
+          transition: 0
+      - delay:
+          milliseconds: 300
+      - action: light.turn_on
+        continue_on_error: true
+        target:
+          entity_id: '{{ lights }}'
+        data:
+          brightness_pct: 100
+          transition: 0.5
+      else:
+      - if:
+        - condition: template
+          value_template: '{{ ''scene.oswietlenie_tryby_przed_pelnym_swiatlem'' in states.scene | map(attribute=''entity_id'')
+            | list }}'
+        then:
+        - action: scene.turn_on
+          continue_on_error: true
+          target:
+            entity_id: scene.oswietlenie_przed_pelnym_swiatlem
+        - delay:
+            seconds: 1
+        - action: scene.turn_on
+          continue_on_error: true
+          target:
+            entity_id: scene.oswietlenie_tryby_przed_pelnym_swiatlem
+        else:
+        - if:
+          - condition: template
+            value_template: '{{ switches | select(''is_state'', ''paused'') | list | count > 0 }}'
+          then:
+          - action: input_select.select_option
+            target:
+              entity_id: '{{ switches | select(''is_state'', ''paused'') | list }}'
+            data:
+              option: 'on'
 mode: parallel
 max: 30
 variables:
@@ -264,4 +367,4 @@ variables:
     dumb: true
     switch: input_select.oswietlenie_adaptacyjne_kuchnia
 trace:
-  stored_traces: 30
+  stored_traces: 100

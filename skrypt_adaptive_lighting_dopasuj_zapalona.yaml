@@ -1,33 +1,36 @@
 # ═══════════════════════════════════════════════════════════════
-# Oświetlenie adaptacyjne – świeżo zapalona żarówka
-# HA: script.oswietlenie_adaptacyjne_swieza_zarowka
+# Oświetlenie adaptacyjne – dopasuj zapaloną żarówkę
+# HA: script.oswietlenie_adaptacyjne_dopasuj_zapalona
 # ═══════════════════════════════════════════════════════════════
 #
 # Elementy systemu (każdy w osobnym pliku):
 #   automatyzacja_adaptive_lighting_wielopokojowa.yaml              – sterowanie
 #   automatyzacja_adaptive_lighting_wykrywanie_recznych_zmian.yaml  – pauza po ręcznej zmianie
-#   skrypt_adaptive_lighting_uzgodnij.yaml                          – dopasowanie wszystkich żarówek
-#   skrypt_adaptive_lighting_swieza_zarowka.yaml                    – dopasowanie świeżo zapalonej żarówki
+#   skrypt_adaptive_lighting_dopasuj_wszystkie.yaml                 – dopasowanie wszystkich żarówek
+#   skrypt_adaptive_lighting_dopasuj_zapalona.yaml                  – dopasowanie właśnie zapalonej żarówki
+#   automatyzacja_adaptive_lighting_cykliczne.yaml                  – sterowanie cykliczne (co 5 min, zmiana celu)
 #   sensor_zadana_jasnosc.jinja, sensor_zadana_temperatura.jinja    – zadane wartości (pomocnicy template)
 #
-# Lista żarówek (bulbs) jest w obu automatyzacjach – musi być zgodna.
+# Lista żarówek (bulbs) jest w trzech automatyzacjach – musi być zgodna.
 #   entity – encja światła          switch – input_select pokoju (on/off/paused)
 #   z2m    – friendly_name w Z2M    dumb   – żarówka pod zwykłym (niesmart) wyłącznikiem
 #
 # Wywoływany przez 'sterowanie' po zapaleniu żarówki (zmiana stanu albo
 # device_announce z Z2M po podaniu zasilania) z parametrami bulb i force_on.
 #
-# Żarówki na zwykłych wyłącznikach mają ustawienia startowe 'jak ostatnio'
-# (previous). Świecąca żarówka jest stale trzymana przy zadanych wartościach,
-# więc po podaniu zasilania od razu startuje z ostatnią zadaną barwą i jasnością,
-# a skrypt tylko koryguje różnicę, która narosła od jej zgaszenia.
+# Żarówkom na zwykłych wyłącznikach skrypt zapisuje ustawienia startowe:
+#   zapalona przed 12:00 – 'jak ostatnio' (previous): krzywa rośnie albo stoi,
+#     więc po ponownym włączeniu żarówka startuje z ostatnią zadaną barwą i jasnością;
+#   zapalona od 12:00 – minimum krzywej (2200 K, 20%): krzywa już tylko spada,
+#     więc wieczorem i w nocy żarówka nie błyska jasno i zimno.
+# Żarówkom, które świecą w południe, 'sterowanie' przestawia start na minimum o 12:00.
 #
 # ═══════════════════════════════════════════════════════════════
 
-alias: 'Oświetlenie adaptacyjne: świeżo zapalona żarówka'
+alias: 'Oświetlenie adaptacyjne: dopasuj zapaloną żarówkę'
 description: 'Ustawia zadaną barwę i jasność żarówce, która właśnie się zapaliła (na zwykłych wyłącznikach bezwarunkowo,
   na smart switchach tylko gdy odbiega) (po 0,5 s i ponownie po 3 s). Żarówkom na zwykłych wyłącznikach zapisuje ustawienia
-  startowe ''jak ostatnio''. Wywoływany przez automatyzację ''Oświetlenie adaptacyjne: sterowanie''.'
+  startowe: przed 12:00 ''jak ostatnio'', od 12:00 minimum krzywej. Wywoływany przez automatyzację ''Oświetlenie adaptacyjne: sterowanie''.'
 mode: parallel
 max: 20
 icon: mdi:lightbulb-on-outline
@@ -97,4 +100,9 @@ sequence:
     continue_on_error: true
     data:
       topic: zigbee2mqtt/{{ bulb.z2m }}/set
-      payload: '{"color_temp_startup": "previous", "level_config": {"current_level_startup": "previous"}}'
+      payload: |-
+        {% if now().hour < 12 %}
+          {"color_temp_startup": "previous", "level_config": {"current_level_startup": "previous"}}
+        {% else %}
+          {"color_temp_startup": 454, "level_config": {"current_level_startup": 51}}
+        {% endif %}

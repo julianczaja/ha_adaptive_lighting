@@ -6,7 +6,7 @@ Użycie:
   python3 sync_ha.py pull            zapisz stan z HA do plików w repo
   python3 sync_ha.py push [nazwa…]   wyślij pliki z repo do HA (pyta o potwierdzenie)
 
-Nazwy elementów: sterowanie, wykrywanie, uzgodnij, swieza_zarowka, jasnosc, temperatura.
+Nazwy elementów: sterowanie, cykliczne, wykrywanie, dopasuj_wszystkie, dopasuj_zapalona, jasnosc, temperatura.
 Bez nazw polecenie dotyczy wszystkich. Przy push opcja -y pomija pytanie.
 
 Adres HA: zmienna HA_URL (domyślnie http://homeassistant.local:8123).
@@ -33,12 +33,14 @@ HA_URL = os.environ.get('HA_URL', 'http://homeassistant.local:8123').rstrip('/')
 ITEMS = {
     'sterowanie': {'file': 'automatyzacja_adaptive_lighting_wielopokojowa.yaml',
                    'kind': 'automation', 'id': '1780307109863'},
+    'cykliczne': {'file': 'automatyzacja_adaptive_lighting_cykliczne.yaml',
+                  'kind': 'automation', 'id': '1795000000201'},
     'wykrywanie': {'file': 'automatyzacja_adaptive_lighting_wykrywanie_recznych_zmian.yaml',
                    'kind': 'automation', 'id': '1790900000001'},
-    'uzgodnij': {'file': 'skrypt_adaptive_lighting_uzgodnij.yaml',
-                 'kind': 'script', 'id': 'oswietlenie_adaptacyjne_uzgodnij'},
-    'swieza_zarowka': {'file': 'skrypt_adaptive_lighting_swieza_zarowka.yaml',
-                       'kind': 'script', 'id': 'oswietlenie_adaptacyjne_swieza_zarowka'},
+    'dopasuj_wszystkie': {'file': 'skrypt_adaptive_lighting_dopasuj_wszystkie.yaml',
+                 'kind': 'script', 'id': 'oswietlenie_adaptacyjne_dopasuj_wszystkie'},
+    'dopasuj_zapalona': {'file': 'skrypt_adaptive_lighting_dopasuj_zapalona.yaml',
+                       'kind': 'script', 'id': 'oswietlenie_adaptacyjne_dopasuj_zapalona'},
     'jasnosc': {'file': 'sensor_zadana_jasnosc.jinja',
                 'kind': 'template', 'id': '01KRZR0PWTPHX3C5FB5QQSWMCH'},
     'temperatura': {'file': 'sensor_zadana_temperatura.jinja',
@@ -174,23 +176,32 @@ def diff(name, item, repo, ha):
         f"repo/{item['file']}", f'HA/{name}', lineterm=''))
 
 
+BULB_LISTS = ('sterowanie', 'cykliczne', 'wykrywanie')
+
+
 def check_bulbs(repo):
-    """Listy bulbs w obu automatyzacjach muszą mieć te same pary entity/switch."""
-    pairs = {}
-    for name in ('sterowanie', 'wykrywanie'):
-        bulbs = (repo[name].get('variables') or {}).get('bulbs') or []
-        pairs[name] = [(b.get('entity'), b.get('switch')) for b in bulbs]
-    if pairs['sterowanie'] != pairs['wykrywanie']:
-        a, b = set(pairs['sterowanie']), set(pairs['wykrywanie'])
-        print('UWAGA: listy bulbs w automatyzacjach sterowanie i wykrywanie się różnią')
-        for e, s in sorted(a - b):
-            print(f'  tylko w sterowaniu: {e} ({s})')
-        for e, s in sorted(b - a):
-            print(f'  tylko w wykrywaniu: {e} ({s})')
-        if a == b:
-            print('  te same żarówki, inna kolejność')
-        return False
-    return True
+    """Listy bulbs we wszystkich automatyzacjach muszą być zgodne ze 'sterowaniem':
+    pary entity/switch wszędzie, a pełne wpisy (z2m, dumb) w 'cyklicznym'."""
+    def bulbs(name):
+        return (repo[name].get('variables') or {}).get('bulbs') or []
+    ok = True
+    ref = [(b.get('entity'), b.get('switch')) for b in bulbs('sterowanie')]
+    for name in BULB_LISTS[1:]:
+        pairs = [(b.get('entity'), b.get('switch')) for b in bulbs(name)]
+        if pairs != ref:
+            ok = False
+            a, b = set(ref), set(pairs)
+            print(f'UWAGA: listy bulbs w automatyzacjach sterowanie i {name} się różnią')
+            for e, s in sorted(a - b):
+                print(f'  tylko w sterowaniu: {e} ({s})')
+            for e, s in sorted(b - a):
+                print(f'  tylko w {name}: {e} ({s})')
+            if a == b:
+                print('  te same żarówki, inna kolejność')
+    if ok and bulbs('cykliczne') != bulbs('sterowanie'):
+        print('UWAGA: listy bulbs w sterowaniu i cyklicznym różnią się polami z2m lub dumb')
+        ok = False
+    return ok
 
 
 # ── Polecenia ────────────────────────────────────────────
@@ -210,8 +221,8 @@ def cmd_diff(names):
         if d:
             changed = True
             print('\n'.join(d))
-    if {'sterowanie', 'wykrywanie'} <= set(names):
-        ok = check_bulbs({n: repo_read(ITEMS[n]) for n in ('sterowanie', 'wykrywanie')})
+    if set(BULB_LISTS) <= set(names):
+        ok = check_bulbs({n: repo_read(ITEMS[n]) for n in BULB_LISTS})
         changed = changed or not ok
     return 1 if changed else 0
 

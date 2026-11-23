@@ -6,11 +6,12 @@
 # Elementy systemu (każdy w osobnym pliku):
 #   automatyzacja_adaptive_lighting_wielopokojowa.yaml              – sterowanie
 #   automatyzacja_adaptive_lighting_wykrywanie_recznych_zmian.yaml  – pauza po ręcznej zmianie
-#   skrypt_adaptive_lighting_uzgodnij.yaml                          – dopasowanie wszystkich żarówek
-#   skrypt_adaptive_lighting_swieza_zarowka.yaml                    – dopasowanie świeżo zapalonej żarówki
+#   skrypt_adaptive_lighting_dopasuj_wszystkie.yaml                 – dopasowanie wszystkich żarówek
+#   skrypt_adaptive_lighting_dopasuj_zapalona.yaml                  – dopasowanie właśnie zapalonej żarówki
+#   automatyzacja_adaptive_lighting_cykliczne.yaml                  – sterowanie cykliczne (co 5 min, zmiana celu)
 #   sensor_zadana_jasnosc.jinja, sensor_zadana_temperatura.jinja    – zadane wartości (pomocnicy template)
 #
-# Lista żarówek (bulbs) jest w obu automatyzacjach – musi być zgodna.
+# Lista żarówek (bulbs) jest w trzech automatyzacjach – musi być zgodna.
 #   entity – encja światła          switch – input_select pokoju (on/off/paused)
 #   z2m    – friendly_name w Z2M    dumb   – żarówka pod zwykłym (niesmart) wyłącznikiem
 #
@@ -98,4 +99,4 @@ variables:
     {{ bulbs | selectattr('entity', 'in', targets) | map(attribute='switch')
              | unique | select('is_state', 'on') | list }}
 trace:
-  stored_traces: 20
+  stored_traces: 50

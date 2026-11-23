@@ -40,14 +40,18 @@ do pomocników bez zmian.
 
 ### Sterowanie
 
-Automatyzacja **sterowanie** reaguje na kilka zdarzeń:
+Sterowanie jest w dwóch automatyzacjach. **Sterowanie cykliczne** obsługuje częste,
+okresowe przebiegi (ok. 560 na dobę), a **sterowanie** zdarzenia. Dzięki temu ślady
+zdarzeń (zapalenia, pauzy, `device_announce`) nie giną wśród przebiegów okresowych.
 
-| Zdarzenie | Co robi |
-|---|---|
-| zmiana zadanych wartości, co 5 min, start HA (po 30 s) | skrypt **uzgodnij** ustawia zadane wartości świecącym żarówkom w pokojach w trybie `on`. Zgaszonym żarówkom na smart switchach zapisuje barwę i poziom włączenia (`on_level`), żeby zapaliły się od razu z właściwym światłem |
-| zapalenie żarówki (zmiana stanu albo `device_announce` z Z2M po podaniu zasilania) | skrypt **świeżo zapalona żarówka** dopasowuje ją po 0,5 s i ponownie po 3 s |
-| zmiana trybu pokoju | przy przełączeniu na `on` od razu dopasowuje światło. Przy przełączeniu na `off` przywraca żarówkom na smart switchach poziom włączenia „jak ostatnio” |
-| zgaszenie wszystkich świateł w pokoju | po 3 s zdejmuje pauzę, jeśli żadna żarówka w pokoju już nie świeci |
+| Automatyzacja | Zdarzenie | Co robi |
+|---|---|---|
+| sterowanie cykliczne | zmiana zadanych wartości, co 5 min, start HA (po 30 s) | skrypt **dopasuj wszystkie żarówki** ustawia zadane wartości świecącym żarówkom w pokojach w trybie `on`. Zgaszonym żarówkom na smart switchach zapisuje barwę i poziom włączenia (`on_level`), żeby zapaliły się od razu z właściwym światłem. Kontrola co 5 min robi ten zapis tylko co 30 min, bo między zmianami celu wartości się nie zmieniają |
+| sterowanie | zapalenie żarówki (zmiana stanu albo `device_announce` z Z2M po podaniu zasilania) | skrypt **dopasuj zapaloną żarówkę** dopasowuje ją po 0,5 s i ponownie po 3 s. Po `device_announce` zapala ją tylko wtedy, gdy jest pod zwykłym wyłącznikiem (żarówka na smart switchu zgłasza się też wtedy, gdy jest zgaszona) |
+| sterowanie | zmiana trybu pokoju | przy przełączeniu na `on` od razu dopasowuje światło. Przy przełączeniu na `off` przywraca żarówkom na smart switchach poziom włączenia „jak ostatnio” |
+| sterowanie | zgaszenie wszystkich świateł w pokoju | po 3 s zdejmuje pauzę, jeśli żadna żarówka w pokoju już nie świeci |
+| sterowanie | 12:00 | świecącym żarówkom pod zwykłymi wyłącznikami ustawia start z minimum krzywej |
+| sterowanie | przełącznik pełnego światła | patrz niżej |
 
 Polecenia są wysyłane tylko wtedy, gdy żarówka odbiega od celu: o co najmniej 30 K albo 3/255 jasności.
 
@@ -72,16 +76,35 @@ Pauzę zdejmuje zgaszenie wszystkich świateł w pokoju albo użycie fizycznego 
 włączeniu startuje z zapisanymi w niej ustawieniami startowymi. Są one ustawione na „jak ostatnio”
 (`previous`). Gdy żarówka świeci, automatyka stale trzyma ją przy zadanych wartościach, dlatego
 po ponownym włączeniu od razu świeci tak, jak zadano w chwili jej zgaszenia. Skrypt
-**świeżo zapalona żarówka** koryguje tylko różnicę, która narosła od tamtej pory.
+**dopasuj zapaloną żarówkę** koryguje tylko różnicę, która narosła od tamtej pory.
 
 Zwykle ta różnica jest niewielka. Duża zdarza się wtedy, gdy żarówka była długo zgaszona,
 a krzywa w tym czasie mocno się zmieniła, np. ostatnio świeciła po południu, a zapalasz ją w nocy.
-Wtedy przez 1–2 s świeci jasno i neutralnie, zanim przyjdzie korekta.
+Wtedy przez 1–2 s świeciłaby jasno i neutralnie, zanim przyjdzie korekta.
 
-Takie żarówki są oznaczone na liście `bulbs` jako `dumb: true`.
+Dlatego „jak ostatnio” jest tylko rano. Żarówka zapalona od 12:00 dostaje ustawienia startowe
+z minimum krzywej (2200 K, 20%), a tym, które świecą w południe, sterowanie przestawia start
+o 12:00. Po południu krzywa już tylko spada, więc żarówka zaczyna ciemno i ciepło, a w ciągu
+ok. 1 s rozjaśnia się do zadanej wartości. Zostaje jeden przypadek z błyskiem: żarówka zapalona
+i zgaszona przed południem, a włączona dopiero wieczorem albo w nocy.
+
+Takie żarówki są oznaczone na liście `bulbs` jako `dumb: true`. Minimum w ustawieniach
+startowych (`454` mired, poziom `51`) jest wpisane w skrypt i w sterowanie: po zmianie
+`min_t` lub `min_b` popraw je ręcznie.
 
 Żarówki na stałym zasilaniu (`dumb: false`) są sterowane przez SONOFF ZBMINIR2 z bindingiem
 Zigbee, więc słuchają poleceń także wtedy, gdy są zgaszone.
+
+### Pełne światło
+
+Przełącznik `input_boolean.oswietlenie_pelne_swiatlo` („Pełne światło”) zapala wszystkie
+dostępne żarówki na 100% i 4000 K (najzimniejsza biel żarówek IKEA). Wcześniej robi migawkę
+świateł i trybów pokoi (`scene.create`) i wstrzymuje pokoje w trybie `on`, żeby adaptacja
+nie przywróciła krzywej. Żarówka zapalona wyłącznikiem w tym czasie też dostaje pełne światło.
+
+Wyłączenie przełącznika przywraca światła z migawki, a po 1 s tryby pokoi. Pokoje wracające
+do `on` same dopasowują się do aktualnej krzywej. Migawka jest tylko w pamięci, więc po
+restarcie HA wyłączenie przełącznika tylko zdejmuje pauzy.
 
 ### Obecna instalacja
 
@@ -100,9 +123,10 @@ Zigbee, więc słuchają poleceń także wtedy, gdy są zgaszone.
 | Plik | Element w Home Assistant |
 |---|---|
 | `automatyzacja_adaptive_lighting_wielopokojowa.yaml` | automatyzacja „Oświetlenie adaptacyjne: sterowanie” |
+| `automatyzacja_adaptive_lighting_cykliczne.yaml` | automatyzacja „Oświetlenie adaptacyjne: sterowanie cykliczne” |
 | `automatyzacja_adaptive_lighting_wykrywanie_recznych_zmian.yaml` | automatyzacja „Oświetlenie adaptacyjne: wykrywanie ręcznych zmian” |
-| `skrypt_adaptive_lighting_uzgodnij.yaml` | `script.oswietlenie_adaptacyjne_uzgodnij` |
-| `skrypt_adaptive_lighting_swieza_zarowka.yaml` | `script.oswietlenie_adaptacyjne_swieza_zarowka` |
+| `skrypt_adaptive_lighting_dopasuj_wszystkie.yaml` | `script.oswietlenie_adaptacyjne_dopasuj_wszystkie` |
+| `skrypt_adaptive_lighting_dopasuj_zapalona.yaml` | `script.oswietlenie_adaptacyjne_dopasuj_zapalona` |
 | `sensor_zadana_jasnosc.jinja` | szablon pomocnika `sensor.zadana_jasnosc_swiatla` |
 | `sensor_zadana_temperatura.jinja` | szablon pomocnika `sensor.zadana_temperatura_swiatla` |
 | `index.html`, `konfigurator.js`, `konfigurator.css` | konfigurator krzywych (GitHub Pages) |
@@ -117,9 +141,10 @@ python3 sync_ha.py pull            # zapis stanu z HA do plików, potem git diff
 python3 sync_ha.py push jasnosc    # wysłanie pliku do HA, po potwierdzeniu
 ```
 
-Elementy to `sterowanie`, `wykrywanie`, `uzgodnij`, `swieza_zarowka`, `jasnosc`
-i `temperatura`. Bez nazw polecenie dotyczy wszystkich. Porównanie sprawdza też,
-czy listy `bulbs` w obu automatyzacjach są zgodne. Nagłówki z komentarzami w plikach YAML
+Elementy to `sterowanie`, `cykliczne`, `wykrywanie`, `dopasuj_wszystkie`, `dopasuj_zapalona`,
+`jasnosc` i `temperatura`. Bez nazw polecenie dotyczy wszystkich. Porównanie sprawdza też,
+czy listy `bulbs` w trzech automatyzacjach są zgodne. Pomocnika `input_boolean`
+pełnego światła skrypt nie synchronizuje. Nagłówki z komentarzami w plikach YAML
 zostają przy `pull` bez zmian.
 
 Skrypt potrzebuje PyYAML i tokenu dostępu. Token czyta ze zmiennej `HA_TOKEN`
@@ -139,14 +164,16 @@ i `level_config` są obsługiwane przez żarówki IKEA TRÅDFRI.
 2. **Przełączniki pokoi.** Dla każdego pokoju utwórz pomocnik typu `input_select`
    o identyfikatorze `oswietlenie_adaptacyjne_<pokój>` z opcjami `on`, `off`, `paused`.
 3. **Skrypty.** Utwórz dwa skrypty w edytorze YAML z plików `skrypt_*.yaml`.
-   Identyfikatory muszą brzmieć `oswietlenie_adaptacyjne_uzgodnij`
-   i `oswietlenie_adaptacyjne_swieza_zarowka`.
-4. **Automatyzacje.** Utwórz obie automatyzacje w edytorze YAML z plików `automatyzacja_*.yaml`
+   Identyfikatory muszą brzmieć `oswietlenie_adaptacyjne_dopasuj_wszystkie`
+   i `oswietlenie_adaptacyjne_dopasuj_zapalona`.
+4. **Pełne światło.** Utwórz pomocnika *Przełącznik* (`input_boolean`) o identyfikatorze
+   `oswietlenie_pelne_swiatlo`.
+5. **Automatyzacje.** Utwórz trzy automatyzacje w edytorze YAML z plików `automatyzacja_*.yaml`
    i uzupełnij listę `bulbs` swoimi żarówkami.
 
 ## Dodawanie żarówki lub pokoju
 
-Lista żarówek `bulbs` występuje w obu automatyzacjach i musi być w nich taka sama:
+Lista żarówek `bulbs` występuje w trzech automatyzacjach i musi być w nich taka sama:
 
 ```yaml
 - entity: light.salon_kanapa_stol                  # encja światła
@@ -155,8 +182,8 @@ Lista żarówek `bulbs` występuje w obu automatyzacjach i musi być w nich taka
   dumb: true                                       # pod zwykłym wyłącznikiem
 ```
 
-1. Dopisz żarówkę do `bulbs` w obu automatyzacjach. W automatyzacji „wykrywanie ręcznych zmian”
-   wystarczą pola `entity` i `switch`.
+1. Dopisz żarówkę do `bulbs` w sterowaniu, sterowaniu cyklicznym i wykrywaniu ręcznych zmian.
+   W automatyzacji „wykrywanie ręcznych zmian” wystarczą pola `entity` i `switch`.
 2. W automatyzacji „sterowanie” dopisz encję światła do triggerów `fresh` i `off`.
 3. Nowy pokój: utwórz jego `input_select` i dopisz go do triggera `mode`.
 

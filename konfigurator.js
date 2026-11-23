@@ -17,7 +17,7 @@ const paramDefs = [
   ['dusk_min_t', 'dusk_min_t_val', 'dusk_min_t', 90],
 ];
 // Granice wspólne dla obu kanałów: rano najpóźniej, wieczorem najwcześniej
-const LIMIT_DEFAULTS = { dawn_latest: '07:00', dusk_earliest: '20:00' };
+const LIMIT_DEFAULTS = { dawn_latest: '06:00', dusk_earliest: '20:00' };
 const params = {};
 
 const DEFAULT_LOCATION = { lat: 53.1235, lng: 18.0084, name: 'Bydgoszcz' };
