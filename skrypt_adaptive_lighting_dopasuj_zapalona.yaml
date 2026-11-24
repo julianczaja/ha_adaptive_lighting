@@ -19,20 +19,24 @@
 # device_announce z Z2M po podaniu zasilania) z parametrami bulb i force_on.
 #
 # Żarówkom na zwykłych wyłącznikach skrypt zapisuje ustawienia startowe:
-#   zapalona przed 12:00 – 'jak ostatnio' (previous): krzywa rośnie albo stoi,
+#   zapalona przed progiem – 'jak ostatnio' (previous): krzywa rośnie albo stoi,
 #     więc po ponownym włączeniu żarówka startuje z ostatnią zadaną barwą i jasnością;
-#   zapalona od 12:00 – minimum krzywej (2200 K, 20%): krzywa już tylko spada,
+#   zapalona od progu – minimum krzywej (2200 K, 20%): krzywa już tylko spada,
 #     więc wieczorem i w nocy żarówka nie błyska jasno i zimno;
 #   pokój z adaptacją wyłączoną (off) – zawsze 'jak ostatnio', bo nikt potem
 #     nie podniesie jasności z minimum (błąd z 2026-11-23, Mały pokój).
-# Żarówkom, które świecą w południe, 'sterowanie' przestawia start na minimum o 12:00.
+# Próg: 3 h przed początkiem ściemniania, czyli przed zachodem słońca, ale nie wcześniej
+# niż 20:00 (dusk_earliest z sensor_zadana_*.jinja; zmieniając go, popraw też tutaj i w
+# 'sterowanie'). Do 2026-11-24 był to stały 12:00, ale wtedy żarówki przez wiele godzin
+# startowały ciemno, choć krzywa dawała 100%.
+# Żarówkom, które świecą w chwili progu, 'sterowanie' przestawia start na minimum.
 #
 # ═══════════════════════════════════════════════════════════════
 
 alias: 'Oświetlenie adaptacyjne: dopasuj zapaloną żarówkę'
 description: 'Ustawia zadaną barwę i jasność żarówce, która właśnie się zapaliła (na zwykłych wyłącznikach bezwarunkowo,
   na smart switchach tylko gdy odbiega) (po 0,5 s i ponownie po 3 s). Żarówkom na zwykłych wyłącznikach zapisuje ustawienia
-  startowe: przed 12:00 i w pokojach z adaptacją wyłączoną ''jak ostatnio'', od 12:00 minimum krzywej. Wywoływany przez automatyzację ''Oświetlenie adaptacyjne: sterowanie''.'
+  startowe: przed progiem (3 h przed początkiem ściemniania) i w pokojach z adaptacją wyłączoną ''jak ostatnio'', od progu minimum krzywej. Wywoływany przez automatyzację ''Oświetlenie adaptacyjne: sterowanie''.'
 mode: parallel
 max: 20
 icon: mdi:lightbulb-on-outline
@@ -103,7 +107,11 @@ sequence:
     data:
       topic: zigbee2mqtt/{{ bulb.z2m }}/set
       payload: |-
-        {% if now().hour < 12 or is_state(bulb.switch, 'off') %}
+        {% set ns = state_attr('sun.sun', 'next_setting') %}
+        {% set ns = as_datetime(ns) | as_local if ns else today_at('20:00') %}
+        {% set ss = ns if ns.date() == now().date() else ns - timedelta(days=1) %}
+        {% set prog = [ss, today_at('20:00')] | max - timedelta(hours=3) %}
+        {% if now() < prog or is_state(bulb.switch, 'off') %}
           {"color_temp_startup": "previous", "level_config": {"current_level_startup": "previous"}}
         {% else %}
           {"color_temp_startup": 454, "level_config": {"current_level_startup": 51}}

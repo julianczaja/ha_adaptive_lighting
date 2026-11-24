@@ -50,7 +50,7 @@ zdarzeń (zapalenia, pauzy, `device_announce`) nie giną wśród przebiegów okr
 | sterowanie | zapalenie żarówki (zmiana stanu albo `device_announce` z Z2M po podaniu zasilania) | skrypt **dopasuj zapaloną żarówkę** dopasowuje ją po 0,5 s i ponownie po 3 s. Po `device_announce` zapala ją tylko wtedy, gdy jest pod zwykłym wyłącznikiem (żarówka na smart switchu zgłasza się też wtedy, gdy jest zgaszona) |
 | sterowanie | zmiana trybu pokoju | przy przełączeniu na `on` od razu dopasowuje światło. Przy przełączeniu na `off` przywraca żarówkom na smart switchach poziom włączenia „jak ostatnio” |
 | sterowanie | zgaszenie wszystkich świateł w pokoju | zdejmuje pauzę: od razu, gdy gasi użytkownik (HA, wyłącznik), więc szybkie ponowne zapalenie wraca do adaptacji; po 3 s, gdy gasi automatyzacja lub scena (np. tryb kino przechodzi chwilowo przez „wszystko zgaszone”). W trybie pełnego światła pauza zostaje |
-| sterowanie | 12:00 | świecącym żarówkom pod zwykłymi wyłącznikami (poza pokojami z adaptacją `off`) ustawia start z minimum krzywej |
+| sterowanie | próg: 3 h przed początkiem ściemniania | świecącym żarówkom pod zwykłymi wyłącznikami (poza pokojami z adaptacją `off`) ustawia start z minimum krzywej |
 | sterowanie | przełącznik pełnego światła | patrz niżej |
 
 Polecenia są wysyłane tylko wtedy, gdy żarówka odbiega od celu: o co najmniej 30 K albo 3/255 jasności.
@@ -82,15 +82,21 @@ Zwykle ta różnica jest niewielka. Duża zdarza się wtedy, gdy żarówka była
 a krzywa w tym czasie mocno się zmieniła, np. ostatnio świeciła po południu, a zapalasz ją w nocy.
 Wtedy przez 1–2 s świeciłaby jasno i neutralnie, zanim przyjdzie korekta.
 
-Dlatego „jak ostatnio” jest tylko rano. Żarówka zapalona od 12:00 dostaje ustawienia startowe
-z minimum krzywej (2200 K, 20%), a tym, które świecą w południe, sterowanie przestawia start
-o 12:00. Po południu krzywa już tylko spada, więc żarówka zaczyna ciemno i ciepło, a w ciągu
-ok. 1 s rozjaśnia się do zadanej wartości. Zostaje jeden przypadek z błyskiem: żarówka zapalona
-i zgaszona przed południem, a włączona dopiero wieczorem albo w nocy.
+Dlatego „jak ostatnio” obowiązuje tylko do progu: 3 h przed początkiem ściemniania, czyli
+przed zachodem słońca, ale nie wcześniej niż 20:00 (`dusk_earliest`). Zimą próg wypada o 17:00,
+latem później. Żarówka zapalona od progu dostaje ustawienia startowe z minimum krzywej
+(2200 K, 20%), a tym, które świecą w chwili progu, sterowanie przestawia start od razu.
+Między progiem a początkiem ściemniania żarówka zaczyna więc ciemno i ciepło, a w ciągu
+1–2 s rozjaśnia się do zadanej wartości. Zostaje przypadek z błyskiem: żarówka zgaszona
+przed progiem, a włączona dopiero wieczorem albo w nocy.
 
-Pokój z adaptacją wyłączoną (`off`) zawsze dostaje start „jak ostatnio”, także po 12:00,
+Do 2026-11-24 progiem było stałe 12:00. Wtedy żarówki przez całe popołudnie startowały
+ciemno, choć krzywa dawała 100%. Według historii z 14 dni (447 zapaleń) próg 12:00 dawał
+215 ciemnych startów i 0 błysków, a próg 3 h przed ściemnianiem 94 i 1.
+
+Pokój z adaptacją wyłączoną (`off`) zawsze dostaje start „jak ostatnio”, także po progu,
 bo nic nie podniosłoby jasności z minimum. Wyłączenie adaptacji w pokoju od razu ustawia
-ten start świecącym żarówkom pod zwykłymi wyłącznikami, a gałąź 12:00 je pomija.
+ten start świecącym żarówkom pod zwykłymi wyłącznikami, a gałąź progu je pomija.
 
 Takie żarówki są oznaczone na liście `bulbs` jako `dumb: true`. Minimum w ustawieniach
 startowych (`454` mired, poziom `51`) jest wpisane w skrypt i w sterowanie: po zmianie
