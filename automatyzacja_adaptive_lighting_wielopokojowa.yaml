@@ -29,9 +29,10 @@
 #            automatyzację lub scenę) albo użycie fizycznego wyłącznika
 #
 # Żarówki na zwykłych wyłącznikach startują 'jak ostatnio', jeśli zapalono je
-# przed progiem, a od progu z minimum krzywej (ustawia to skrypt 'dopasuj zapaloną
-# żarówkę'; świecącym w chwili progu trigger 'prog'). Próg: 3 h przed początkiem
-# ściemniania (zachód słońca, nie wcześniej niż 20:00); do 2026-11-24 stałe 12:00.
+# przed progiem, od progu z 3000 K / 60%, a od 30 min po początku ściemniania z minimum
+# krzywej (ustawia to skrypt 'dopasuj zapaloną żarówkę'; świecącym triggery 'prog'
+# i 'prog_min'). Próg: 3 h przed początkiem ściemniania (zachód słońca, nie wcześniej
+# niż 20:00); do 2026-11-24 stałe 12:00 i od razu minimum.
 #
 # Pełne światło: input_boolean.oswietlenie_pelne_swiatlo (trigger 'full').
 #   on  – migawka trybów pokoi i każdej zapalonej żarówki (scene.create),
@@ -47,8 +48,8 @@ alias: 'Oświetlenie adaptacyjne: sterowanie'
 description: Steruje oświetleniem adaptacyjnym przy zdarzeniach. Każdy pokój ma input_select (on/off/paused). Zapalenie
   żarówki (zmiana stanu lub device_announce z Z2M po podaniu zasilania) uruchamia skrypt 'dopasuj zapaloną żarówkę'.
   Pauzę (ustawianą przez automatyzację 'wykrywanie ręcznych zmian') zdejmuje zgaszenie wszystkich świateł w pokoju
-  albo użycie fizycznego wyłącznika. 3 h przed początkiem ściemniania przestawia start świecących żarówek na zwykłych wyłącznikach na minimum
-  krzywej. Obsługuje też przełącznik pełnego światła (zapalone i zapalane potem żarówki dostają 100% i 4000 K, wyłączenie
+  albo użycie fizycznego wyłącznika. 3 h przed początkiem ściemniania przestawia start świecących żarówek na zwykłych wyłącznikach na 3000 K / 60%,
+  a 30 min po początku ściemniania na minimum krzywej. Obsługuje też przełącznik pełnego światła (zapalone i zapalane potem żarówki dostają 100% i 4000 K, wyłączenie
   przywraca poprzedni stan). Okresowe dopasowanie jest w 'sterowaniu cyklicznym'. Lista żarówek (bulbs) musi być
   zgodna z listami w 'sterowaniu cyklicznym' i 'wykrywaniu ręcznych zmian'.
 triggers:
@@ -108,6 +109,13 @@ triggers:
     {% set ss = ns if ns.date() == now().date() else ns - timedelta(days=1) %}
     {{ now() >= [ss, today_at('20:00')] | max - timedelta(hours=3) }}
   id: prog
+- trigger: template
+  value_template: |-
+    {% set ns = state_attr('sun.sun', 'next_setting') %}
+    {% set ns = as_datetime(ns) | as_local if ns else today_at('20:00') %}
+    {% set ss = ns if ns.date() == now().date() else ns - timedelta(days=1) %}
+    {{ now() >= [ss, today_at('20:00')] | max + timedelta(minutes=30) }}
+  id: prog_min
 - trigger: state
   entity_id: input_boolean.oswietlenie_pelne_swiatlo
   from:
@@ -259,7 +267,9 @@ actions:
         option: 'on'
   - conditions:
     - condition: trigger
-      id: prog
+      id:
+      - prog
+      - prog_min
     sequence:
     - repeat:
         for_each: '{{ bulbs | selectattr(''dumb'') | selectattr(''entity'', ''is_state'', ''on'')
@@ -269,7 +279,9 @@ actions:
           continue_on_error: true
           data:
             topic: zigbee2mqtt/{{ repeat.item.z2m }}/set
-            payload: '{"color_temp_startup": 454, "level_config": {"current_level_startup": 51}}'
+            payload: >-
+              {% if trigger.id == 'prog' %}{"color_temp_startup": 333, "level_config": {"current_level_startup": 153}}
+              {%- else %}{"color_temp_startup": 454, "level_config": {"current_level_startup": 51}}{% endif %}
         - delay:
             milliseconds: 150
   - conditions:

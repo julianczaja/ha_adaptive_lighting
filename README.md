@@ -47,10 +47,11 @@ zdarzeń (zapalenia, pauzy, `device_announce`) nie giną wśród przebiegów okr
 | Automatyzacja | Zdarzenie | Co robi |
 |---|---|---|
 | sterowanie cykliczne | zmiana zadanych wartości, co 5 min, start HA (po 30 s) | skrypt **dopasuj wszystkie żarówki** ustawia zadane wartości świecącym żarówkom w pokojach w trybie `on`. Zgaszonym żarówkom na smart switchach zapisuje barwę i poziom włączenia (`on_level`), żeby zapaliły się od razu z właściwym światłem. Kontrola co 5 min robi ten zapis tylko co 30 min, bo między zmianami celu wartości się nie zmieniają |
-| sterowanie | zapalenie żarówki (zmiana stanu albo `device_announce` z Z2M po podaniu zasilania) | skrypt **dopasuj zapaloną żarówkę** dopasowuje ją po 0,5 s i ponownie po 3 s. Po `device_announce` zapala ją tylko wtedy, gdy jest pod zwykłym wyłącznikiem (żarówka na smart switchu zgłasza się też wtedy, gdy jest zgaszona) |
+| sterowanie | zapalenie żarówki (zmiana stanu albo `device_announce` z Z2M po podaniu zasilania) | skrypt **dopasuj zapaloną żarówkę** dopasowuje ją od razu (żarówkę na smart switchu po 0,5 s) i ponownie po 3 s. Po `device_announce` zapala ją tylko wtedy, gdy jest pod zwykłym wyłącznikiem (żarówka na smart switchu zgłasza się też wtedy, gdy jest zgaszona) |
 | sterowanie | zmiana trybu pokoju | przy przełączeniu na `on` od razu dopasowuje światło. Przy przełączeniu na `off` przywraca żarówkom na smart switchach poziom włączenia „jak ostatnio” |
 | sterowanie | zgaszenie wszystkich świateł w pokoju | zdejmuje pauzę: od razu, gdy gasi użytkownik (HA, wyłącznik), więc szybkie ponowne zapalenie wraca do adaptacji; po 3 s, gdy gasi automatyzacja lub scena (np. tryb kino przechodzi chwilowo przez „wszystko zgaszone”). W trybie pełnego światła pauza zostaje |
-| sterowanie | próg: 3 h przed początkiem ściemniania | świecącym żarówkom pod zwykłymi wyłącznikami (poza pokojami z adaptacją `off`) ustawia start z minimum krzywej |
+| sterowanie | próg: 3 h przed początkiem ściemniania | świecącym żarówkom pod zwykłymi wyłącznikami (poza pokojami z adaptacją `off`) ustawia start 3000 K / 60% |
+| sterowanie | 30 min po początku ściemniania | to samo, ale start z minimum krzywej |
 | sterowanie | przełącznik pełnego światła | patrz niżej |
 
 Polecenia są wysyłane tylko wtedy, gdy żarówka odbiega od celu: o co najmniej 30 K albo 3/255 jasności.
@@ -84,15 +85,23 @@ Wtedy przez 1–2 s świeciłaby jasno i neutralnie, zanim przyjdzie korekta.
 
 Dlatego „jak ostatnio” obowiązuje tylko do progu: 3 h przed początkiem ściemniania, czyli
 przed zachodem słońca, ale nie wcześniej niż 20:00 (`dusk_earliest`). Zimą próg wypada o 17:00,
-latem później. Żarówka zapalona od progu dostaje ustawienia startowe z minimum krzywej
-(2200 K, 20%), a tym, które świecą w chwili progu, sterowanie przestawia start od razu.
-Między progiem a początkiem ściemniania żarówka zaczyna więc ciemno i ciepło, a w ciągu
+latem później. Żarówka zapalona od progu dostaje stopień pośredni (3000 K, 60%), a zapalona
+od 30 min po początku ściemniania minimum krzywej (2200 K, 20%). Świecącym w tych chwilach
+sterowanie przestawia start od razu. Przed 20:00 żarówka zaczyna więc nieco ciemniej i w ciągu
 1–2 s rozjaśnia się do zadanej wartości. Zostaje przypadek z błyskiem: żarówka zgaszona
-przed progiem, a włączona dopiero wieczorem albo w nocy.
+przed progiem, a włączona dopiero w nocy (najwyżej 60%, jeśli zgaszono ją po progu).
+
+Żarówkom pod zwykłymi wyłącznikami skrypt wysyła barwę i jasność od razu po zgłoszeniu się
+(bez czekania 0,5 s i z przejściem 0), więc korekta trwa ok. 0,3 s. Zostaje 1–2 s, zanim
+żarówka dołączy do sieci po podaniu prądu.
 
 Do 2026-11-24 progiem było stałe 12:00. Wtedy żarówki przez całe popołudnie startowały
 ciemno, choć krzywa dawała 100%. Według historii z 14 dni (447 zapaleń) próg 12:00 dawał
-215 ciemnych startów i 0 błysków, a próg 3 h przed ściemnianiem 94 i 1.
+215 ciemnych startów i 0 błysków, a próg 3 h przed ściemnianiem 94 i 1. Stopień pośredni
+dodano tego samego dnia: na historii 10,5 dnia (350 zapaleń) mocnych ciemnych startów
+(różnica co najmniej 60 punktów) było 97, a z nim 29, kosztem łagodnych (69 zamiast 18)
+i jednego błysku więcej. Pozostałe ok. 29 to głównie zgaszenie w nocy i zapalenie rano;
+tego żaden zapis startu nie usunie, pomógłby tylko przekaźnik za wyłącznikiem.
 
 Pokój z adaptacją wyłączoną (`off`) zawsze dostaje start „jak ostatnio”, także po progu,
 bo nic nie podniosłoby jasności z minimum. Wyłączenie adaptacji w pokoju od razu ustawia
